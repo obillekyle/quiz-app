@@ -1,0 +1,399 @@
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  test,
+} from 'bun:test'
+import { rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+// bakery imported `core/init` here, which installs the mode flags; this
+// package has no init, so the capture below simply finds them absent.
+import { setLogCallback } from '../internal/index.js'
+import { SQLiteAdapter } from '../adapters/sqlite.js'
+import { isProductionSync, SyncEngine } from './engine.js'
+import { executeSyncPlan } from './execute.js'
+import { buildSyncPlan } from './plan.js'
+
+/**
+ * The two guards in `SyncEngine` that were not doing their job.
+ *
+ * Both are about the same thing from opposite ends: one decides whether a
+ * destructive plan may run unattended, the other decides what ends up in the
+ * plan at all. Neither is observable from the outside without driving the
+ * engine, which is why they went unnoticed.
+ */
+
+// ---------------------------------------------------------------------------
+
+describe('the production guard reads NODE_ENV, and only NODE_ENV', () => {
+  const original = {
+    NODE_ENV: { had: 'NODE_ENV' in process.env, value: process.env.NODE_ENV },
+    PROD: { had: 'PROD' in process.env, value: process.env.PROD },
+  }
+
+  /**
+   * Restore, and never delete a flag this file did not create.
+   *
+   * The unconditional `delete` this used to open with was a cross-file leak.
+   * `bakery-orm` does not import `core/init`, so when this file loads
+   * first the captured `PROD` is absent, and the restore then removed the flag
+   * init had installed in the meantime, leaving `import.meta.env.PROD`
+   * undefined for every file that ran afterwards. `bundleModule` passes that
+   * flag straight to `Bun.build`, which rejects a non-boolean `minify`, so two
+   * NMHandler tests failed under full-suite ordering while passing in isolation.
+   *
+   * Presence at capture time is what decides, now that the flags are plain
+   * `'1'`/`''` strings rather than accessors (Bun 1.4 rejects accessor
+   * descriptors on `process.env`). The old version told "installed here" from
+   * "owned by init" by looking for a setter, which no longer exists on either.
+   */
+  const installedHere = new Set<string>()
+
+  function restore(key: 'NODE_ENV' | 'PROD') {
+    const { had, value } = original[key]
+    if (had) {
+      process.env[key] = value
+      return
+    }
+    // Absent when this file loaded, so there is nothing to put back, but only
+    // remove it if *this file* is what put it there. `core/init` may have been
+    // imported by another test file in between (orm does not import it), and
+    // deleting the flag init installed leaves `import.meta.env.PROD` undefined
+    // for every file that runs afterwards. That is not hypothetical: it is the
+    // leak this whole helper was written for, and it resurfaced here the moment
+    // the descriptor-based version was replaced.
+    if (installedHere.has(key)) {
+      delete (process.env as Record<string, unknown>)[key]
+    }
+    installedHere.delete(key)
+  }
+
+  /** Exactly what `core/init.ts` installs: `'1'` for true, `''` for false. */
+  function installProdFlag(value: boolean) {
+    installedHere.add('PROD')
+    process.env.PROD = value ? '1' : ''
+  }
+
+  afterEach(() => {
+    restore('NODE_ENV')
+    restore('PROD')
+  })
+
+  test('the PROD flag alone does not make a sync a deployment', () => {
+    // The original code compared `process.env.PROD` against the *string*
+    // 'true' while init.ts installed a boolean, so the term never fired.
+    // Deleting it is deliberate, and this pins that: `PROD` means
+    // only "--dev is absent", and `db:sync` never passes --dev, so honoring
+    // the flag would make every standalone sync count as production and leave
+    // the interactive confirm unreachable.
+    process.env.NODE_ENV = 'development'
+    installProdFlag(true)
+    expect(isProductionSync()).toBe(false)
+  })
+
+  test('a false PROD flag is not production either', () => {
+    process.env.NODE_ENV = 'development'
+    installProdFlag(false)
+    expect(isProductionSync()).toBe(false)
+  })
+
+  test('NODE_ENV alone still decides it, with no flag installed', () => {
+    delete (process.env as Record<string, unknown>).PROD
+    process.env.NODE_ENV = 'production'
+    expect(isProductionSync()).toBe(true)
+  })
+
+  test('neither signal present is not production', () => {
+    // A process that never imported core/init.ts (a bare unit test, say)     // must not be treated as a deployment.
+    delete (process.env as Record<string, unknown>).PROD
+    process.env.NODE_ENV = 'development'
+    expect(isProductionSync()).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+
+/**
+ * `adjustSqlitePlan` rebuilt every renamed table and then emptied
+ * `columnsToRename` whenever any column rename existed at all. It dated from
+ * SQLite before 3.25 having no `ALTER TABLE … RENAME COLUMN`; Bun ships 3.53,
+ * and `adapters/ddl.test.ts` already proves the statement works.
+ *
+ * Measured against a real database before removing it, the special case:
+ *   - dropped a rename in a table nothing else touched, leaving the sync to
+ *     report a *perfect* sync while the column kept its old name: forever,
+ *     since the next run re-derives and re-discards the same plan;
+ *   - threw `Object.entries requires that input parameter not be null or
+ *     undefined` when a table rename and an unrelated column rename coincided,
+ *     because the table it added to `tablesToRebuild` is keyed by its *old*
+ *     name and `constraints` has no such entry;
+ *   - threw `NOT NULL constraint failed` when a rename and a rebuild landed on
+ *     the same table, because the rebuild copies by *new* column name and the
+ *     rename that would have produced it had just been discarded.
+ *
+ * The first two are pinned through `SyncEngine.run`, which is where it was
+ * called from; the rest execute the plan and check the rows.
+ */
+describe('SQLite column renames survive planning', () => {
+  const schemaPath = path.join(
+    tmpdir(),
+    `bakery-engine-${process.pid}-${Date.now()}.ts`,
+  )
+  const open: SQLiteAdapter[] = []
+
+  beforeAll(async () => {
+    // `checkEmptyConstraints` bails out and generates a schema when the file is
+    // absent; its contents are never read here.
+    await Bun.write(schemaPath, '// fixture\n')
+  })
+
+  afterAll(async () => {
+    for (const db of open) await db.close()
+    rmSync(schemaPath, { force: true })
+  })
+
+  function fresh(): SQLiteAdapter {
+    const db = new SQLiteAdapter(':memory:')
+    open.push(db)
+    return db
+  }
+
+  /** Run a real dry-run sync and collect the structured messages it emitted. */
+  async function dryRun(
+    db: SQLiteAdapter,
+    constraints: Record<string, unknown>,
+  ): Promise<string> {
+    const lines: string[] = []
+    const argv = process.argv
+    setLogCallback(entry => void lines.push(entry.msg))
+    process.argv = ['bun', 'db:sync', '--dry-run']
+    try {
+      await SyncEngine.run(db as any, constraints as any, {}, schemaPath)
+    } finally {
+      process.argv = argv
+      setLogCallback(() => {})
+    }
+    return lines.join('\n')
+  }
+
+  const pk = { type: 'integer', primary: true, autoIncrement: true }
+
+  test('a rename in a table nothing else touches is planned, not swallowed', async () => {
+    const db = fresh()
+    await db
+      .query(
+        'CREATE TABLE people (id INTEGER PRIMARY KEY AUTOINCREMENT, old_name TEXT NOT NULL)',
+      )
+      .run()
+
+    const out = await dryRun(db, {
+      people: {
+        id: pk,
+        displayName: { type: 'string', _oldColumn: 'oldName' },
+      },
+    })
+
+    expect(out).toContain('Columns to rename')
+    expect(out).toContain('people.old_name -> display_name')
+    // The dangerous half of the bug: with the rename discarded this was the
+    // only thing the plan contained, so the engine reported success.
+    expect(out).not.toContain('perfectly synced')
+  })
+
+  test('a table rename and an unrelated column rename coexist', async () => {
+    const db = fresh()
+    await db
+      .query('CREATE TABLE old_widgets (id INTEGER PRIMARY KEY AUTOINCREMENT)')
+      .run()
+    await db
+      .query(
+        'CREATE TABLE people (id INTEGER PRIMARY KEY AUTOINCREMENT, old_name TEXT NOT NULL)',
+      )
+      .run()
+
+    const out = await dryRun(db, {
+      widgets: { id: pk, _oldTable: 'oldWidgets' },
+      people: {
+        id: pk,
+        displayName: { type: 'string', _oldColumn: 'oldName' },
+      },
+    })
+
+    expect(out).toContain('old_widgets -> widgets')
+    expect(out).toContain('people.old_name -> display_name')
+    // The renamed table was converted into a rebuild keyed by its old name,
+    // which then threw on execution because `constraints.oldWidgets` does not
+    // exist. Nothing here should be rebuilt at all.
+    expect(out).not.toContain('Tables to rebuild')
+  })
+
+  // The plan has always known these (`unmappedTsTables` counts as a change and
+  // keeps their foreign keys out of the ALTER pass), and the printout never
+  // said so: a dry run on a fresh database with five tables and three indexes
+  // listed only the indexes. Reported from the hackathon app, 2026-10-01.
+  test('a dry run names the tables it would create', async () => {
+    const db = fresh()
+    await db
+      .query('CREATE TABLE old_widgets (id INTEGER PRIMARY KEY AUTOINCREMENT)')
+      .run()
+    await db
+      .query('CREATE TABLE people (id INTEGER PRIMARY KEY AUTOINCREMENT)')
+      .run()
+
+    const out = await dryRun(db, {
+      people: { id: pk },
+      widgets: { id: pk, _oldTable: 'oldWidgets' },
+      quizzes: { id: pk, title: { type: 'string' } },
+      answers: { id: pk, body: { type: 'string' } },
+    })
+
+    const created = out.split('\n').find(line => line.includes('Tables to create'))
+    expect(created).toBeDefined()
+    expect(created).toContain('quizzes')
+    expect(created).toContain('answers')
+    // A table that exists, and one arriving by rename, are not created.
+    expect(created).not.toContain('people')
+    expect(created).not.toContain('widgets')
+  })
+
+  test('on an empty database every table is listed', async () => {
+    const out = await dryRun(fresh(), {
+      creators: { id: pk },
+      quizzes: { id: pk },
+    })
+    expect(out).toContain('Tables to create')
+    expect(out).toContain('creators')
+    expect(out).toContain('quizzes')
+  })
+})
+
+describe('SQLite column renames survive execution', () => {
+  const open: SQLiteAdapter[] = []
+  const silent: any = new Proxy({}, { get: () => () => {} })
+  const logger: any = {
+    log: () => {},
+    // Every rename below is resolved by an `old()` wrapper, so reaching the
+    // interactive matcher means the plan was built wrong.
+    selectIndex: (msg: string) => {
+      throw new Error(`unexpected prompt: ${msg}`)
+    },
+  }
+
+  afterAll(async () => {
+    for (const db of open) await db.close()
+  })
+
+  function fresh(): SQLiteAdapter {
+    const db = new SQLiteAdapter(':memory:')
+    open.push(db)
+    return db
+  }
+
+  async function apply(
+    db: SQLiteAdapter,
+    constraints: Record<string, unknown>,
+  ) {
+    const plan = await buildSyncPlan(
+      db as any,
+      constraints as any,
+      logger,
+      silent,
+    )
+    await executeSyncPlan({
+      tx: db as any,
+      plan,
+      constraints: constraints as any,
+      indexesToDrop: new Set(),
+      indexesToAdd: new Map(),
+      MESSAGES: silent,
+    })
+  }
+
+  const pk = { type: 'integer', primary: true, autoIncrement: true }
+
+  test('the column is renamed and every row keeps its value', async () => {
+    const db = fresh()
+    await db
+      .query(
+        'CREATE TABLE people (id INTEGER PRIMARY KEY AUTOINCREMENT, old_name TEXT NOT NULL)',
+      )
+      .run()
+    await db
+      .query("INSERT INTO people (old_name) VALUES ('ann'), ('bob')")
+      .run()
+
+    await apply(db, {
+      people: {
+        id: pk,
+        displayName: { type: 'string', _oldColumn: 'oldName' },
+      },
+    })
+
+    const cols = Object.keys((await db.getConstraints()).people)
+    expect(cols).toContain('displayName')
+    expect(cols).not.toContain('oldName')
+    expect(await db.query('SELECT display_name FROM people').all()).toEqual([
+      { display_name: 'ann' },
+      { display_name: 'bob' },
+    ])
+  })
+
+  test('a rename and a rebuild on the same table keep the data', async () => {
+    // The column type change forces a rebuild, and the rebuild copies columns
+    // by their *new* names, which only exist because the rename ran first.
+    const db = fresh()
+    await db
+      .query(
+        'CREATE TABLE people (id INTEGER PRIMARY KEY AUTOINCREMENT, old_name TEXT NOT NULL, score TEXT NOT NULL)',
+      )
+      .run()
+    await db
+      .query("INSERT INTO people (old_name, score) VALUES ('ann', '5')")
+      .run()
+
+    await apply(db, {
+      people: {
+        id: pk,
+        displayName: { type: 'string', _oldColumn: 'oldName' },
+        score: { type: 'integer' },
+      },
+    })
+
+    expect(
+      await db.query('SELECT display_name, score FROM people').all(),
+    ).toEqual([{ display_name: 'ann', score: 5 }])
+  })
+
+  test('a view over the renamed column does not block the rename', async () => {
+    // The likeliest reason to keep the special case: SQLite rewrites view and
+    // index definitions on RENAME COLUMN and refuses if it cannot. It can.
+    const db = fresh()
+    await db
+      .query(
+        'CREATE TABLE people (id INTEGER PRIMARY KEY AUTOINCREMENT, old_name TEXT NOT NULL)',
+      )
+      .run()
+    await db.query("INSERT INTO people (old_name) VALUES ('ann')").run()
+    await db
+      .query('CREATE VIEW people_names AS SELECT old_name FROM people')
+      .run()
+
+    await apply(db, {
+      people: {
+        id: pk,
+        displayName: { type: 'string', _oldColumn: 'oldName' },
+      },
+      peopleNames: {
+        _view: 'SELECT display_name FROM people',
+        displayName: { type: 'string', nullable: true },
+      },
+    })
+
+    expect(await db.query('SELECT * FROM people_names').all()).toEqual([
+      { display_name: 'ann' },
+    ])
+  })
+})

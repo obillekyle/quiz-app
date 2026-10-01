@@ -1,0 +1,31 @@
+{
+  "name": "silid-server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch src/index.ts",
+    "start": "node --env-file-if-exists=.env src/index.ts",
+    "db:sync": "bun node_modules/bakery-orm/src/sync/index.ts",
+    "db:sync:node": "node --env-file-if-exists=.env node_modules/bakery-orm/dist/sync/index.js",
+    "typecheck": "tsc --noEmit",
+    "seed": "bun scripts/seed.ts"
+  },
+  "engines": {
+    "node": ">=22.22"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.1.3",
+    "@napi-rs/canvas": "^1.0.9",
+    "bakery-orm": "file:../bakery-orm",
+    "hono": "^4.13.12",
+    "nodemailer": "^7",
+    "pdf-lib": "^1.17.1",
+    "unpdf": "^1.8.1"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.2",
+    "@types/node": "22",
+    "@types/nodemailer": "^8.0.2",
+    "typescript": "5.9.3"
+  }
+}

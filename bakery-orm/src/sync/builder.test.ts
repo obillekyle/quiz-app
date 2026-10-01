@@ -1,0 +1,659 @@
+import { describe, expect, test } from 'bun:test'
+import { rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { Bakery } from '../internal/index.js'
+import { fs } from '../internal/index.js'
+import { SQLiteAdapter } from '../adapters/sqlite.js'
+import { collectConstraints } from '../define.js'
+import { SchemaBuilder } from './builder.js'
+
+const silentMessages: any = new Proxy({}, { get: () => () => {} })
+
+/**
+ * `db:sync --choose=db` writes schema.ts from the database, and the sync engine
+ * generates one when none exists. Since the framework no longer imports
+ * schema.ts for types, a generated file that omits the registration block
+ * leaves the ORM silently untyped: it runs, but every column is `any`.
+ *
+ * That is exactly the failure the schema registry was introduced to prevent, so
+ * the generator's output contract is pinned here.
+ */
+describe('generated schema registers itself', () => {
+  async function generate(): Promise<string> {
+    const db = new SQLiteAdapter(':memory:')
+    await db
+      .query(
+        'CREATE TABLE widgets (id INTEGER PRIMARY KEY, name TEXT NOT NULL, qty INTEGER DEFAULT 0)',
+      )
+      .run()
+
+    const path = `${Bakery.cacheDir}/__gen-schema-test.ts`
+    // Cast: SQLiteAdapter declares parseDefault private while the base does
+    // not, so it is not structurally assignable to SQLAdapter. Pre-existing
+    // (see the same error at adapters/sqlite.ts:228) and unrelated to this test.
+    await SchemaBuilder.generate(db as any, path, silentMessages)
+    const source = await Bun.file(path).text()
+    await Bun.file(path).delete()
+    return source
+  }
+
+  test('emits the declare module registration block', async () => {
+    const source = await generate()
+    expect(source).toContain(
+      "declare module 'bakery-orm/schema-registry'",
+    )
+    expect(source).toContain('interface SchemaRegistry')
+  })
+
+  test('registers all three type slots the registry reads', async () => {
+    const source = await generate()
+    expect(source).toContain('DBSchema: DBSchema')
+    expect(source).toContain('DBOptionals: DBOptionals')
+    expect(source).toContain('Views: DBInfo.Views')
+  })
+
+  test('still emits the DBInfo namespace and derived types', async () => {
+    const source = await generate()
+    expect(source).toContain('export namespace DBInfo')
+    expect(source).toContain('export type DBSchema')
+    expect(source).toContain('export type DBOptionals')
+    expect(source).toContain('widgets')
+  })
+})
+
+/**
+ * The generator only ever emitted the `DBInfo` namespace. For a project on the
+ * `orm/` folder layout the write target is `orm/schema.ts`, which `index.ts`
+ * re-exports, so a regeneration replaced every `table()` value with a
+ * namespace *and* added a second `declare module 'bakery-orm/schema-registry'`
+ * block colliding with the one `index.ts` already declares. `--choose=db` did
+ * it on demand; a sync involving `old()` wrappers did it implicitly.
+ *
+ * It now emits `table()` values for that layout, and tables only: `index.ts`
+ * owns the registration and `indexes.ts` owns the constraints, which is the
+ * separation the folder layout exists for.
+ */
+describe('the generated shape follows the layout it is written into', () => {
+  async function generate(layout: 'folder' | 'file' | 'none' | undefined) {
+    const db = new SQLiteAdapter(':memory:')
+    await db
+      .query(
+        "CREATE TABLE widgets (id INTEGER PRIMARY KEY AUTOINCREMENT, label TEXT NOT NULL, note TEXT, qty INTEGER DEFAULT 0, made_at INTEGER NOT NULL DEFAULT (CAST(strftime('%s', 'now') AS INTEGER)))",
+      )
+      .run()
+    await db.createIndex('idx_widgets_label', 'widgets', ['label'], true)
+
+    const path = `${Bakery.cacheDir}/__gen-layout-test.ts`
+    await SchemaBuilder.generate(db as any, path, silentMessages, {}, layout)
+    const source = await Bun.file(path).text()
+    await Bun.file(path).delete()
+    await db.close()
+    return source
+  }
+
+  test('a folder layout gets table() values, not a DBInfo namespace', async () => {
+    const source = await generate('folder')
+
+    expect(source).toContain("export const widgets = table('widgets', {")
+    expect(source).toContain('id: Field.Primary(),')
+    expect(source).toContain('note: Field.String(null),')
+    expect(source).toContain('madeAt: Field.Date.now(),')
+    expect(source).not.toContain('namespace DBInfo')
+
+    // `qty` is nullable *and* defaults to 0, which `Field` cannot spell: its one
+    // convention is that a null default means nullable. Emitting `Field.Int(0)`
+    // would quietly turn a nullable column NOT NULL, so it falls through to a
+    // plain object literal: constraints *are* objects, so this needs no helper
+    // and imports nothing.
+    // `as const` matters and is not cosmetic. `table()` takes
+    // `C extends Record<string, unknown>`, which does not preserve literals, so
+    // without it `type: 'integer'` widens to `type: string` and `InferSchema`
+    // has nothing to match, every column spelled this way infers as a string.
+    // Invisible in the `DBInfo` layout, whose whole object is already `as const`.
+    expect(source).toContain(
+      "qty: { type: 'integer', default: 0, nullable: true } as const,",
+    )
+
+    // `label` is NOT NULL with no default, and it now says so.
+    //
+    // **This assertion used to read `Field.String(null)`, pinning the loss as
+    // known behavior**: the comment beside it called it "the column
+    // formatter's long-standing round-trip loss". It was not merely cosmetic:
+    // `Field`'s convention is that a null default *means* nullable, so the
+    // generated schema redefined the column, and the next sync planned to
+    // rebuild the table to apply the change it had invented. Fixed by reading
+    // the `nullable` flag introspection already reports beside the default
+    // rather than the default alone.
+    expect(source).toContain('label: Field.Text(),')
+    expect(source).not.toContain('label: Field.String(null),')
+  })
+
+  test('a folder layout never emits a second registration block', async () => {
+    // The collision: `orm/index.ts` already declares this module against its
+    // own `InferSchema<typeof model>`, and two augmentations of the same
+    // interface member do not merge.
+    const source = await generate('folder')
+    expect(source).not.toContain(
+      "declare module 'bakery-orm/schema-registry'",
+    )
+    expect(source).not.toContain('interface SchemaRegistry')
+  })
+
+  test('a folder layout leaves indexes to indexes.ts', async () => {
+    const source = await generate('folder')
+    expect(source).not.toContain('idxWidgetsLabel')
+    expect(source).not.toContain('unique(')
+  })
+
+  test('the folder module imports exactly the helpers it used', async () => {
+    const source = await generate('folder')
+    // Exactly the helpers used, and no more: `Field` and `table`. The column
+    // `Field` cannot name is an object literal, and `Field.Date.now()` replaces
+    // the old `dateNow` marker import, so neither `value` nor `dateNow`
+    // appears, and there is no longer a `value` to import.
+    expect(source).toContain(
+      "import { Field, table } from 'bakery-orm'",
+    )
+    expect(source).not.toContain('dateNow')
+    expect(source).not.toContain('value(')
+  })
+
+  test('the emitted module really is importable, and round-trips', async () => {
+    // Written to a real file and imported: a generated schema that does not
+    // parse, or whose `table()` values `collectConstraints` cannot read, is the
+    // failure this whole change is about.
+    //
+    // The `bakery-orm` specifier is rewritten to this package's own entry
+    // because the workspace links `bakery-orm` into the *apps*, not into
+    // `packages/orm` itself, so nothing under a temp directory can resolve it.
+    // The specifier as emitted is asserted separately above.
+    const entry = Bun.pathToFileURL(
+      fs.resolve(import.meta.dir, '../index.ts'),
+    ).href
+    const source = (await generate('folder')).replace(
+      "from 'bakery-orm'",
+      `from '${entry}'`,
+    )
+
+    const path = fs.resolve(
+      tmpdir(),
+      `bakery-gen-${process.pid}-${Date.now()}.ts`,
+    )
+    await Bun.write(path, source)
+    try {
+      // As a file:// URL, for the same reason `entry` above is one. A bare
+      // Windows absolute path resolved when this file ran alone and failed
+      // inside the full suite with `Cannot find module … from ''`: the
+      // importer context differs, and a drive-lettered path is not a specifier.
+      // Deterministic, not flaky: 5/5 alone, 3/3 failures in the suite.
+      const module = await import(Bun.pathToFileURL(path).href)
+      expect(collectConstraints(module)).toEqual({
+        widgets: {
+          id: { type: 'integer', autoIncrement: true, primary: true },
+          // This is now a real round trip, and the DDL is the thing to compare
+          // against: `label TEXT NOT NULL` (no default) and `note TEXT`
+          // (nullable). Both used to come back as nullable-with-a-null-default
+          //: the loss the comment here used to excuse.
+          label: { type: 'string' },
+          note: { type: 'string', default: null, nullable: true },
+          qty: { type: 'integer', default: 0, nullable: true },
+          madeAt: { type: 'integer', default: '%dateNow%' },
+        },
+      })
+    } finally {
+      rmSync(path, { force: true })
+    }
+  })
+
+  test('file and none layouts are unchanged, and are the default', async () => {
+    for (const layout of ['file', 'none', undefined] as const) {
+      const source = await generate(layout)
+      expect(source).toContain('export namespace DBInfo')
+      expect(source).toContain(
+        "declare module 'bakery-orm/schema-registry'",
+      )
+      expect(source).toContain('idxWidgetsLabel')
+      expect(source).not.toContain('export const widgets = table(')
+    }
+  })
+})
+
+describe('the previous schema is preserved before it is overwritten', () => {
+  const backupDir = `${Bakery.dataDir}/backups`
+
+  async function listSchemaBackups(): Promise<string[]> {
+    const { readdir } = await import('node:fs/promises')
+    const entries = await readdir(backupDir).catch(() => [] as string[])
+    return entries.filter(n => /^schema\.\d+\.ts$/.test(n))
+  }
+
+  test('an existing schema is copied aside, not silently destroyed', async () => {
+    const db = new SQLiteAdapter(':memory:')
+    await db.query('CREATE TABLE widgets (id INTEGER PRIMARY KEY)').run()
+
+    const schemaPath = `${Bakery.dataDir}/__preserve-test__.ts`
+    const original =
+      '// hand written, and the only copy, schema.ts is gitignored\n'
+    await Bun.write(schemaPath, original)
+
+    const before = await listSchemaBackups()
+    await SchemaBuilder.generate(db as any, schemaPath, silentMessages)
+    const after = await listSchemaBackups()
+
+    // A *new* file, not a bigger count. `preserveExisting` prunes to ten, so
+    // once the directory reaches the cap it adds one and drops one and the
+    // count never moves: making a count assertion pass until enough syncs
+    // have run, then fail for a reason unrelated to what it tests.
+    const added = after.find(name => !before.includes(name))!
+    expect({ added: Boolean(added) }).toEqual({ added: true })
+    expect(await Bun.file(`${backupDir}/${added}`).text()).toBe(original)
+
+    // And the generated file really did replace it.
+    expect(await Bun.file(schemaPath).text()).toContain(
+      'export namespace DBInfo',
+    )
+
+    await Bun.file(schemaPath).delete()
+    await Bun.file(`${backupDir}/${added}`).delete()
+  })
+
+  test('nothing is preserved when there is no previous schema', async () => {
+    const db = new SQLiteAdapter(':memory:')
+    await db.query('CREATE TABLE widgets (id INTEGER PRIMARY KEY)').run()
+
+    const schemaPath = `${Bakery.dataDir}/__preserve-absent__.ts`
+    await Bun.file(schemaPath)
+      .delete()
+      .catch(() => {})
+
+    const before = await listSchemaBackups()
+    await SchemaBuilder.generate(db as any, schemaPath, silentMessages)
+    const after = await listSchemaBackups()
+
+    expect(after.length).toBe(before.length)
+    await Bun.file(schemaPath).delete()
+  })
+})
+
+/**
+ * What the single-file `DBInfo` layout emits.
+ *
+ * Both cases below were live bugs found by generating against a real database
+ * rather than by the suite: the round-trip test imports the *tables*, so
+ * neither the index block nor an extra table it wrote was ever exercised.
+ */
+describe('the DBInfo layout emits an importable file', () => {
+  async function generateFile(): Promise<string> {
+    const db = new SQLiteAdapter(':memory:')
+    await db
+      .query('CREATE TABLE widgets (id INTEGER PRIMARY KEY, slug TEXT)')
+      .run()
+    await db.createIndex('widgets_slug_uniq', 'widgets', ['slug'], true)
+    await db.createIndex('widgets_slug_idx', 'widgets', ['slug'], false)
+    // A ledger, exactly as a synced database has.
+    const { writeLedger } = await import('./ledger.js')
+    await writeLedger(db as any, await db.getConstraints(), {})
+
+    const path = `${Bakery.cacheDir}/__gen-dbinfo-test.ts`
+    await SchemaBuilder.generate(db as any, path, silentMessages, {}, 'file')
+    const source = await Bun.file(path).text()
+    await Bun.file(path).delete()
+    await db.close()
+    return source
+  }
+
+  test('indexes use Field.Index / Field.Unique, not the removed helpers', async () => {
+    const source = await generateFile()
+    expect(source).toContain("Field.Unique('widgets', 'slug')")
+    expect(source).toContain("Field.Index('widgets', 'slug')")
+    // `index(` / `unique(` were emitted after those exports were deleted, so
+    // the generated file referenced two identifiers it did not import.
+    expect(source).not.toMatch(/[^.\w]index\(/)
+    expect(source).not.toMatch(/[^.\w]unique\(/)
+  })
+
+  test('the ledger table is not written into the app schema', async () => {
+    // `--choose=db` reads the adapter directly, so it has to strip the ledger
+    // itself. Without it sync starts managing `__bakery_schema`, the ledger
+    // records itself, and the shape check never matches again.
+    const source = await generateFile()
+    expect(source).not.toContain('bakerySchema')
+    expect(source).not.toContain('__bakery_schema')
+    expect(source).toContain('widgets:')
+  })
+
+  test('every identifier it references, it imports', async () => {
+    const source = await generateFile()
+    const imported = new Set(
+      [...source.matchAll(/import \{([^}]*)\} from/g)]
+        .flatMap(m => m[1]!.split(','))
+        .map(s => s.replace(/\btype\b/, '').trim())
+        .filter(Boolean),
+    )
+    // Every `Foo(` call at the head of a property value must be imported.
+    for (const [, name] of source.matchAll(/:\s*([A-Za-z_][\w]*)\(/g)) {
+      expect({ name, imported: imported.has(name!) }).toEqual({
+        name,
+        imported: true,
+      })
+    }
+  })
+})
+
+/**
+ * `orm/views.ts`, generated.
+ *
+ * A view has no column DDL (`CREATE VIEW x AS SELECT …` declares no types, and
+ * `createView(name, sql)` takes nothing else), so each one is emitted as an
+ * interface plus a `view()` call, not as column builders. Emitting
+ * `Field.Varchar(64)` for a view column would state a width the database
+ * neither stores nor enforces.
+ */
+describe('views are generated into their own module', () => {
+  async function generateInto(dir: string) {
+    const db = new SQLiteAdapter(':memory:')
+    await db
+      .query(
+        'CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, active INTEGER)',
+      )
+      .run()
+    await db
+      .query(
+        'CREATE VIEW active_users AS SELECT id, name FROM users WHERE active = 1',
+      )
+      .run()
+
+    const tablesPath = `${dir}/tables.ts`
+    await SchemaBuilder.generate(
+      db as any,
+      tablesPath,
+      silentMessages,
+      {},
+      'folder',
+    )
+    const tables = await Bun.file(tablesPath).text()
+    const viewsFile = Bun.file(`${dir}/views.ts`)
+    const views = (await viewsFile.exists()) ? await viewsFile.text() : null
+    await Bun.file(tablesPath).delete()
+    if (views !== null) await viewsFile.delete()
+    await db.close()
+    return { tables, views }
+  }
+
+  test('the view goes to views.ts, not tables.ts', async () => {
+    const { tables, views } = await generateInto(Bakery.cacheDir)
+    expect(tables).toContain("table('users'")
+    // Emitting it in both files would leave two declarations of one view, and
+    // collectConstraints silently keeps whichever was exported last.
+    expect(tables).not.toContain('activeUsers')
+    expect(views).not.toBeNull()
+    // camelCase in the schema, snake_case on the way to SQL: the same
+    // convention the table generator uses, so a view reads like a table.
+    expect(views).toContain("view<'activeUsers', ActiveUsersView>")
+  })
+
+  test('the interface is PascalCase and typed from the columns', async () => {
+    const { views } = await generateInto(Bakery.cacheDir)
+    expect(views).toContain('export interface ActiveUsersView {')
+    expect(views).toContain('id: number')
+    expect(views).toContain('name: string')
+    // No column builders: a view has no column DDL to describe.
+    expect(views).not.toContain('Field.')
+  })
+
+  test('it imports exactly what it uses', async () => {
+    const { views } = await generateInto(Bakery.cacheDir)
+    expect(views).toContain("import { view } from 'bakery-orm'")
+    expect(views).not.toContain('table(')
+  })
+
+  test('no views means no file', async () => {
+    // An empty views.ts plus an `export * from './views'` that resolves to
+    // nothing is noise in every project that has none.
+    const db = new SQLiteAdapter(':memory:')
+    await db.query('CREATE TABLE only_a_table (id INTEGER PRIMARY KEY)').run()
+    const tablesPath = `${Bakery.cacheDir}/tables.ts`
+    await SchemaBuilder.generate(
+      db as any,
+      tablesPath,
+      silentMessages,
+      {},
+      'folder',
+    )
+    expect(await Bun.file(`${Bakery.cacheDir}/views.ts`).exists()).toBe(false)
+    await Bun.file(tablesPath).delete()
+    await db.close()
+  })
+  test('an existing views.ts is never overwritten', async () => {
+    // The whole reason the interface form exists is that you refine it:
+    // introspection can only call a JSON column `unknown`, and that a
+    // `json_arrayagg(json_object(...))` column holds `{ id: number }[]` is
+    // knowledge only the author has. Regenerating over it would delete exactly
+    // that work, so the generator seeds this file once and then leaves it.
+    const db = new SQLiteAdapter(':memory:')
+    await db
+      .query('CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)')
+      .run()
+    await db
+      .query('CREATE VIEW active_users AS SELECT id, name FROM users')
+      .run()
+
+    const tablesPath = `${Bakery.cacheDir}/tables.ts`
+    const viewsPath = `${Bakery.cacheDir}/views.ts`
+    await Bun.file(viewsPath)
+      .delete()
+      .catch(() => {})
+
+    await SchemaBuilder.generate(
+      db as any,
+      tablesPath,
+      silentMessages,
+      {},
+      'folder',
+    )
+    const seeded = await Bun.file(viewsPath).text()
+    expect(seeded).toContain('ActiveUsersView')
+
+    // Refine it, exactly as a user would after seeing `unknown`.
+    const edited = seeded.replace('name: string', 'name: string & { brand: 1 }')
+    await Bun.write(viewsPath, edited)
+
+    await SchemaBuilder.generate(
+      db as any,
+      tablesPath,
+      silentMessages,
+      {},
+      'folder',
+    )
+    expect(await Bun.file(viewsPath).text()).toBe(edited)
+
+    await Bun.file(tablesPath).delete()
+    await Bun.file(viewsPath).delete()
+    await db.close()
+  })
+})
+
+/**
+ * A schema generated from a database must round-trip: the next sync should have
+ * nothing to do. It did not, and both defects pointed the same way: toward a
+ * destructive plan against a database the schema had just been read from.
+ *
+ * Measured before the fix, on a two-table SQLite database:
+ *
+ *     DANGER ZONE: Destructive or major changes detected!
+ *     Tables to rebuild (schema modified): posts
+ *
+ * because `posts.author_id integer NOT NULL REFERENCES users(id)` regenerated as
+ * `Field.Int(null)`, nullable, and no reference.
+ */
+describe('generation is faithful enough to round-trip', () => {
+  async function generateFrom(ddl: string[]): Promise<string> {
+    const db = new SQLiteAdapter(':memory:')
+    for (const s of ddl) await db.query(s).run()
+
+    const path = `${Bakery.cacheDir}/__gen-fidelity-test.ts`
+    await SchemaBuilder.generate(db as any, path, silentMessages)
+    const source = await Bun.file(path).text()
+    await Bun.file(path).delete()
+    return source
+  }
+
+  const SCHEMA = [
+    'CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT)',
+    'CREATE TABLE posts (' +
+      'id INTEGER PRIMARY KEY AUTOINCREMENT, ' +
+      'author_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, ' +
+      'title TEXT, ' +
+      "body TEXT NOT NULL DEFAULT ''" +
+      ')',
+  ]
+
+  test('a NOT NULL column with no default is not made nullable', async () => {
+    const source = await generateFrom(SCHEMA)
+    // `Field`'s convention is that a null default *means* nullable, so
+    // `Field.Int(null)` here would redefine the column rather than describe it.
+    expect(source).not.toContain('Field.Int(null)')
+    // And the column is still emitted: the fix must not drop it.
+    expect(source).toContain('authorId')
+  })
+
+  test('a genuinely nullable column still reads as nullable', async () => {
+    // The other direction, so the fix is not "never emit null".
+    const source = await generateFrom(SCHEMA)
+    expect(source).toMatch(/title: Field\.\w+\([^)]*null\)/)
+  })
+
+  test('a foreign key survives as a column reference', async () => {
+    const source = await generateFrom(SCHEMA)
+    expect(source).toContain('_references')
+    expect(source).toContain("table: 'users'")
+    expect(source).toContain("column: 'id'")
+    expect(source).toContain("onDelete: 'CASCADE'")
+  })
+
+  test('a default that is not null is unaffected', async () => {
+    // The fix reads the `nullable` flag; it must not touch a real default.
+    const source = await generateFrom(SCHEMA)
+    expect(source).toMatch(/body: Field\.String\(""\)/)
+  })
+})
+
+/**
+ * The folder layout never seeded `indexes.ts`, while the single-file layout
+ * carries an `indexes` block inside `DBInfo`. So a folder-layout schema
+ * regenerated from a database declared no indexes at all, and a TS-wins sync
+ * drops what the schema does not mention. Measured: adopting a database with
+ * three indexes armed the next sync to drop all three.
+ */
+describe('the folder layout seeds indexes.ts', () => {
+  test('one export per index, and none of them dropped', async () => {
+    const db = new SQLiteAdapter(':memory:')
+    for (const s of [
+      'CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT)',
+      'CREATE UNIQUE INDEX username_uniq ON users (username)',
+      'CREATE INDEX users_by_id ON users (id)',
+    ])
+      await db.query(s).run()
+
+    const dir = `${Bakery.cacheDir}/__gen-folder-test`
+    await SchemaBuilder.generate(
+      db as any,
+      `${dir}/tables.ts`,
+      silentMessages,
+      {},
+      'folder',
+    )
+
+    const indexes = await Bun.file(`${dir}/indexes.ts`).text()
+    expect(indexes).toContain('Field.Unique')
+    expect(indexes).toContain('Field.Index')
+    expect(indexes).toContain('usernameUniq')
+    expect(indexes).toContain('usersById')
+    // Imports what it uses, the single-file block once referenced identifiers
+    // it never imported, invisible because only the tables are round-tripped.
+    expect(indexes).toContain("import { Field } from 'bakery-orm'")
+
+    rmSync(dir, { recursive: true, force: true })
+  })
+})
+
+/**
+ * A referencing column reads as `Field.Foreign(parent.id)` in the folder layout.
+ *
+ * It used to be emitted as the object literal: correct, and four times the
+ * width:
+ *
+ *     sectionId: { type: 'integer', default: null, nullable: true,
+ *                  _references: { table: 'sections', column: 'id' } } as const,
+ *
+ * The literal is still the fallback, and has to be: `Field.Foreign` names the
+ * parent's *table value*, so the parent must already be declared. Tables are
+ * emitted parents-first for exactly that reason, and a reference cycle falls
+ * back rather than emitting a `const` used before its declaration.
+ */
+describe('foreign keys read as Field.Foreign in the folder layout', () => {
+  async function folderModule(ddl: string[]): Promise<string> {
+    const db = new SQLiteAdapter(':memory:')
+    for (const s of ddl) await db.query(s).run()
+    const dir = `${Bakery.cacheDir}/__gen-fk-form-test`
+    await SchemaBuilder.generate(
+      db as any,
+      `${dir}/tables.ts`,
+      silentMessages,
+      {},
+      'folder',
+    )
+    const source = await Bun.file(`${dir}/tables.ts`).text()
+    rmSync(dir, { recursive: true, force: true })
+    return source
+  }
+
+  test('emits the call, not the literal', async () => {
+    const source = await folderModule([
+      'CREATE TABLE sections (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT)',
+      'CREATE TABLE students (id INTEGER PRIMARY KEY AUTOINCREMENT, section_id INTEGER REFERENCES sections(id))',
+    ])
+    expect(source).toContain('Field.Foreign(sections.id')
+    expect(source).not.toContain('_references')
+  })
+
+  test('the parent is declared before the child that references it', async () => {
+    // Declaration order is load-bearing: `Field.Foreign(sections.id)` reads a
+    // `const` at module evaluation, so a child emitted first is a TDZ error.
+    const source = await folderModule([
+      // Created child-first, so source order alone would get this wrong.
+      'CREATE TABLE students (id INTEGER PRIMARY KEY AUTOINCREMENT, section_id INTEGER REFERENCES sections(id))',
+      'CREATE TABLE sections (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT)',
+    ])
+    expect(source.indexOf('const sections')).toBeLessThan(
+      source.indexOf('const students'),
+    )
+  })
+
+  test('onDelete and nullability come along', async () => {
+    const source = await folderModule([
+      'CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT)',
+      'CREATE TABLE posts (id INTEGER PRIMARY KEY AUTOINCREMENT, author_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE)',
+    ])
+    expect(source).toContain("onDelete: 'CASCADE'")
+    // NOT NULL, so no `nullable: true`. The flag that would redefine it.
+    expect(source).toMatch(/authorId: Field\.Foreign\(users\.id, \{ onDelete/)
+  })
+
+  test('a reference cycle falls back rather than emitting a forward const', async () => {
+    // Legal SQL, and the one case the call form cannot express.
+    const source = await folderModule([
+      'CREATE TABLE a (id INTEGER PRIMARY KEY AUTOINCREMENT, b_id INTEGER REFERENCES b(id))',
+      'CREATE TABLE b (id INTEGER PRIMARY KEY AUTOINCREMENT, a_id INTEGER REFERENCES a(id))',
+    ])
+    // One direction resolves, the other keeps the literal. Whichever way round,
+    // nothing may reference a const declared later in the file.
+    const first = source.indexOf('const a =')
+    const second = source.indexOf('const b =')
+    const earlier = Math.min(first, second)
+    const laterName = first < second ? 'b' : 'a'
+    expect(source.slice(earlier, Math.max(first, second))).not.toContain(
+      `Field.Foreign(${laterName}.`,
+    )
+  })
+})

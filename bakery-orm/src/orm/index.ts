@@ -1,0 +1,23 @@
+/**
+ * **Import order is load-bearing here, and alphabetical order is wrong.**
+ *
+ * `query.ts` and `mutation.ts` are a cycle: `query.ts` ends with
+ * `export const Insert = Mutation.Insert`, read at module top level, and
+ * `mutation.ts` imports `DB` from `query.ts`. Whichever this barrel names first
+ * is the one that evaluates first.
+ *
+ * `./query` first works. `./mutation` first does not: `mutation.ts` pulls in
+ * `query.ts`, whose top-level `Mutation.Insert` runs while `Mutation` is still
+ * initializing, and the whole ORM dies with
+ * `TypeError: undefined is not an object (evaluating 'Mutation.Insert')`.
+ *
+ * Biome's `organizeImports` sorts these alphabetically and puts `./mutation`
+ * first. The compiler cannot see the breakage, because the types are fine
+ * either way. Hence the suppression.
+ */
+// biome-ignore-all assist/source/organizeImports: cycle. See above
+import { DB } from './query.js'
+import { Mutation } from './mutation.js'
+
+export default DB
+export { DB, Mutation }

@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ESNext"],
+    "types": ["node", "bun"],
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "verbatimModuleSyntax": true,
+    // Node runs these files by stripping their types, with no build step, so
+    // every relative import names its file. Node also refuses syntax it cannot
+    // strip (enums, namespaces, parameter properties) at startup.
+    // `erasableSyntaxOnly` would catch that here, but it applies to the whole
+    // program, and bakery-orm's package points TypeScript at its own sources,
+    // which use parameter properties (they reach Node compiled, from dist/).
+    "allowImportingTsExtensions": true,
+    "skipLibCheck": true,
+    "noEmit": true
+  },
+  "include": ["src", "scripts", "schema.ts"]
+}

@@ -1,0 +1,216 @@
+/*
+ * Cascade layers, lowest first. A component's own (unlayered) style always
+ * beats a utility attribute, whatever the selector, so `<item p="sm">` never
+ * fights the component that styles `item`.
+ */
+@layer tokens, base, utilities;
+
+@import "./styles/tokens.css";
+@import "./styles/utilities.css";
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  /* The scrollbar's room is kept on every page, so the bar's icons do not
+     move 10px between pages that scroll and pages that do not. */
+  html {
+    scrollbar-gutter: stable;
+  }
+
+  body {
+    margin: 0;
+    font-family: var(--font);
+    font-size: var(--fs-md);
+    line-height: var(--lh);
+    color: var(--ink);
+    background: var(--bg);
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-heading);
+  }
+
+  /* Thin scrollbars in the page's own grays: a split view scrolls in two
+     places, and the system's wide bars stood out in both. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--ink) 22%, transparent) transparent;
+  }
+
+  /* One rule for every animation and transition in the app: a person who
+     asked for less motion gets none, whichever component drew it. Important
+     inside a layer outranks the components' own unlayered rules. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+
+  /*
+   * A page loading, drawn in the shape of what is coming: `<div skeleton>`
+   * blocks laid out like the rows or cards they stand in for, a slow light
+   * passing over them. Hidden from assistive tech; the page's own status
+   * line says it is loading.
+   */
+  [skeleton] {
+    display: block;
+    border-radius: var(--radius-md);
+    background: linear-gradient(
+        100deg,
+        var(--sunken) 30%,
+        color-mix(in srgb, var(--ink) 9%, var(--sunken)) 50%,
+        var(--sunken) 70%
+      )
+      0 0 / 200% 100%;
+    color: transparent;
+    animation: skeleton-sweep 1.6s linear infinite;
+  }
+  [skeleton="text"] {
+    height: 0.9em;
+    border-radius: var(--radius-sm);
+  }
+  [skeleton="round"] {
+    border-radius: 50%;
+  }
+  @keyframes skeleton-sweep {
+    to {
+      background-position: -200% 0;
+    }
+  }
+}
+
+/*
+ * Buttons and fields, in the same attribute style as the utilities:
+ * `<button btn="primary">`, `<RouterLink btn="quiet">`, `<input field>`.
+ * In `base`, so a component's own style still wins.
+ */
+@layer base {
+  [btn] {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-sm);
+    min-height: 44px;
+    padding: 0 var(--space-xl);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--line);
+    background: var(--surface);
+    color: var(--ink);
+    font: inherit;
+    font-weight: 600;
+    text-decoration: none;
+    white-space: nowrap;
+    cursor: pointer;
+    transition:
+      background var(--fast) var(--ease),
+      transform var(--fast) var(--ease),
+      box-shadow var(--fast) var(--ease);
+
+    &:hover:not(:disabled) {
+      background: var(--hover);
+    }
+    &:active:not(:disabled) {
+      transform: translateY(1px);
+    }
+    &:disabled {
+      opacity: 0.6;
+      cursor: default;
+    }
+    &:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+  }
+
+  [btn="primary"] {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--accent-ink);
+
+    &:hover:not(:disabled) {
+      background: color-mix(in srgb, var(--accent) 88%, black);
+    }
+  }
+
+  [btn="quiet"] {
+    border-color: transparent;
+    background: transparent;
+  }
+
+  /*
+   * Selects draw Material's expand-more arrow (the set the app's icons come
+   * from) instead of the browser's own glyph. A background image cannot take
+   * currentColor, so the arrow is the ink at 65% in each theme.
+   */
+  select {
+    appearance: none;
+    padding-right: 34px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23686868' d='M12 14.95q-.2 0-.375-.062t-.325-.213l-4.6-4.6q-.275-.275-.275-.7t.275-.7t.7-.275t.7.275l3.9 3.9l3.9-3.9q.275-.275.7-.275t.7.275t.275.7t-.275.7l-4.6 4.6q-.15.15-.325.213T12 14.95'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    background-size: 20px;
+  }
+  :root[data-theme="dark"] select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23a8a8a8' d='M12 14.95q-.2 0-.375-.062t-.325-.213l-4.6-4.6q-.275-.275-.275-.7t.275-.7t.7-.275t.7.275l3.9 3.9l3.9-3.9q.275-.275.7-.275t.7.275t.275.7t-.275.7l-4.6 4.6q-.15.15-.325.213T12 14.95'/%3E%3C/svg%3E");
+  }
+
+  /*
+   * A stacked list (Kyle, 23:30): one group whose outer corners are 20px and
+   * clip what is inside, its items separate tiles 4px apart with 6px
+   * corners, the page showing between them. `<ul stack>`; each child is a
+   * tile.
+   */
+  [stack] {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin: 0;
+    padding: 0;
+    border-radius: var(--radius-2xl);
+    /* Paint containment clips to the rounded box, as overflow: hidden
+       would, and keeps the list's layout to itself. */
+    contain: content;
+    list-style: none;
+
+    > * {
+      border-radius: var(--radius-tile);
+      background: var(--surface);
+    }
+    /* The clip would cut a focus ring drawn outside an item. */
+    :focus-visible {
+      outline-offset: -3px;
+    }
+  }
+
+  [field] {
+    width: 100%;
+    min-height: 44px;
+    padding: 0 var(--space-md);
+    border: 1px solid color-mix(in srgb, var(--ink) 18%, transparent);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    color: var(--ink);
+    font: inherit;
+
+    &:focus {
+      outline: 2px solid var(--accent);
+      outline-offset: -1px;
+      border-color: transparent;
+    }
+    &[aria-invalid="true"] {
+      border-color: var(--bad);
+    }
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "$comment": "Emits dist/ for Node. Node's types only: a leftover Bun.* call in shipped code is a compile error here rather than a ReferenceError on the first request.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "noEmit": false,
+    "outDir": "dist",
+    "rootDir": "src",
+    "declaration": true,
+    "sourceMap": true
+  },
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts", "src/tests"]
+}

@@ -1,0 +1,18 @@
+{
+  "$comment": "Typechecks everything, tests included, with Bun's types for bun:test. The build (tsconfig.build.json) leaves Bun's types out, so the shipped code cannot reach the Bun global without a cast that says so.",
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ESNext"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "types": ["node", "bun"],
+    "strict": true,
+    "skipLibCheck": true,
+    "verbatimModuleSyntax": true,
+    "esModuleInterop": true,
+    "noFallthroughCasesInSwitch": true,
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": true
+  },
+  "include": ["src", "test"]
+}
