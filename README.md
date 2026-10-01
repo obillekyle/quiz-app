@@ -20,7 +20,7 @@ QuizApp is BPC Competitors' entry to the RAITE 2026 AI in Education Hackathon (P
 - **Hand editing.** Every field of every question can be changed, and questions can be added, moved and deleted. Each save checks every quote again.
 - **Pictures on questions.** A question can carry a picture: the teacher's own upload (JPG, PNG or WebP, 5 MB at most), a figure the AI boxes on the module's page and the server crops out, or a Wikimedia Commons picture for a search term the AI names, stored with its author and license. The picture shows above the question on the take screen and prints in grayscale with its credit.
 - **Sharing.** A quiz stays a draft until it is shared. Sharing gives a link and a QR code (downloadable as SVG). Stopping turns the link off and pauses the clock of every attempt still open on an overall time limit; sharing again brings back the same link and resumes those clocks where they stopped. The overview marks the quiz "Shared", "Not shared" (shared before: it has takers, open attempts or a release) or "Draft".
-- **Practice or Graded.** Two options on the Sharing page that set three settings at once. Practice, the default, shows the correct answer, the explanation and the source sentence after each answer, offers hints, and lets the quiz be taken again. Graded holds scores and answers until the quiz maker releases them, offers no hints, and allows one attempt per browser. When the three settings disagree (set one by one on the Settings page) the control reads "Custom". The overview's Sharing panel states the mode in a sentence, with a Change link.
+- **Practice, Test or Graded.** Three options on the Sharing page that set four settings at once. Practice, the default, checks each answer when it is confirmed, with the correct answer, the explanation and the source sentence, and locks it; hints are on and the quiz can be taken again. Test saves answers unchecked and lets them change until the quiz is finished, then shows the score and the answers; hints are off and the quiz can be taken again. Graded is Test with the scores and answers held until the quiz maker releases them, and one attempt per browser. When the four settings match none of the three, the control reads "Custom". The overview's Sharing panel states the mode in a sentence, with a Change link.
 - **Quiz settings.** A name and a description; an icon from any Iconify set, or an uploaded cover (JPG, PNG, WebP or GIF, 5 MB at most; the page shrinks a photo to 1600 px of WebP before sending it); a color for the quiz's card, its square in the sidebar and its page for respondents (six palette colors or any picked one, with the text on it chosen by contrast); shuffled questions and shuffled options; a time limit per question (10 s to 10 min) or for the whole quiz (1 min to 3 h); a hint on each question naming the topic and page, or none; one attempt per browser, or more than one; and whether the score and the answers show at the end or wait until the quiz maker releases them. AI checking of typed answers and AI scoring of essays each have a switch. Every control saves as it changes.
 - **Held results.** With "Show score and answers" off, a respondent who finishes sees "Your answers are in" and can leave an email address. "Release results", on the overview or the settings page, shows the scores from then on and emails everyone who asked, each address once.
 - **Shuffled papers are reviewed as served.** An attempt's question order, option order and answer key are saved with it when it starts, so a response opens in the order the respondent saw, with the letters the respondent saw ("Key B").
@@ -31,14 +31,16 @@ QuizApp is BPC Competitors' entry to the RAITE 2026 AI in Education Hackathon (P
 - **Reports.** Respondents can flag a quiz (a wrong answer, harmful content, copied work, or something else). A report made while a question is on screen names that question. Reports carry no name and show on the quiz's overview.
 - **Notifications.** A bell in the top bar lists finished responses and new reports on the quiz maker's quizzes, with a dot while any are unread.
 - **Print as a test.** A black-and-white paper test: Set A in the quiz's order and a shuffled Set B, an answer key for each set, and a table of specifications by topic and Bloom level. Short bond, long bond or A4. A question's picture prints in grayscale, no taller than a third of the page, with its credit under it.
-- **Duplicate, archive, delete.** A copy keeps the questions, files, settings and cover and starts with no responses. An archived quiz moves to the Archived page and its link stops opening; its Sharing section reads "Archived. The link does not open." Deleting removes the quiz, its files and its responses. Each of these, with Share, Stop sharing and the builder's Save, confirms itself with one line at the bottom of the screen for 3 s.
+- **Duplicate, archive, delete.** A copy keeps the questions, files, settings and cover and starts with no responses. An archived quiz moves to the Archived page and its link stops opening; its Sharing section reads "Archived. The link does not open." Archiving a shared quiz pauses the clocks of its open attempts as stopping does, and Restore resumes them. Deleting removes the quiz, its files and its responses. Each of these, with Share, Stop sharing and the builder's Save, confirms itself with one line at the bottom of the screen for 3 s.
 - **Account settings.** The name shown to respondents, the ways to sign in (a code by email, Google, a password), a light, dark or system theme, signing out every other device, and deleting the account with everything in it.
 
 ### Answering a quiz
 
-- The link or the QR code opens the quiz. The intro shows the quiz's icon or cover, its description, and its rules: a time limit, one attempt per browser, held results, essays scored by hand. A name is all it asks for; a section ("7 Sampaguita") is optional, and the quiz maker sees it beside the name.
-- One question at a time, with a progress bar and, when the quiz offers hints, a hint naming the topic and page to look at. Skip is the quiet button until the question is answered, and Next takes its place after. A timed quiz shows a clock in the top bar: per question, the quiz moves on at zero and a passed question cannot be opened again; overall, the quiz finishes on its own at zero.
-- Feedback right after each answer: the right option, why each option is right or wrong, the explanation, and the sentence of the material the answer comes from. While the results are held, the answer is saved and nothing comes back about how it scored.
+- The link or the QR code opens the quiz. The intro shows the quiz's icon or cover, its description, and its rules: a time limit, answers that can be changed until the quiz is finished, one attempt per browser, held results, essays scored by hand. A name is all it asks for; a section ("7 Sampaguita") is optional, and the quiz maker sees it beside the name.
+- One question at a time, with a progress bar and, when the quiz offers hints, a hint naming the topic and page to look at. A tap or typed text is a pick, never an answer: the filled button under the question confirms it, Check on a Practice quiz and Next on a Test or Graded one. Skip is the quiet button while the question is open; on a Test or Graded quiz it drops a pick that was not confirmed.
+- On a Practice quiz, Check brings the feedback and locks the answer: the right option, why each option is right or wrong, the explanation, and the sentence of the material the answer comes from. Next then moves on.
+- On a Test or Graded quiz, Next saves the answer and nothing comes back about how it scored. A saved answer can be changed until Finish, and a "Your answers" list comes before Finish: every question marked "Answered" or "Not answered", each row the way back to it, and the count still unanswered above the button. A Test shows the score and every question's feedback at the end; a Graded quiz holds them until the quiz maker releases them.
+- A timed quiz shows a clock in the top bar: per question, the quiz moves on at zero and a passed question cannot be opened again, so there is no way back and no list; overall, the quiz finishes on its own at zero. At zero the pick on screen is sent first.
 - A score at the end, a rating from five faces, a review of every question, and, when the quiz allows it, "Take the quiz again", which starts with empty name and section fields. An essay waiting for the quiz maker's score says so. With the results held, the end says "Your answers are in" and takes an email address to write to when they are released.
 - A refresh or a closed tab resumes at the first unanswered question. With one attempt per browser, a browser that finished the quiz opens it as "Quiz already taken".
 - A flag on every page, drawn in the muted ink, reports the quiz to its maker; it turns red once a report is sent.
@@ -110,7 +112,7 @@ Measured on 2026-10-01, the last line on 2026-10-02:
 - **Browser.** One Vue app with two sides. The teacher side (brown) needs an account. The respondent side (purple, at `/q/<code>`) needs a name only, and holds its attempt with a token sent in a header.
 - **API.** One Hono app under `/api`: `/auth`, `/uploads`, `/quizzes`, `/responses`, `/notifications`, `/illustrations`, and the public `/q/:code` and `/attempts`. Every error leaves as JSON with a message written for people.
 - **Reading pipeline.** A file is read the moment it is uploaded, before the prompt is sent. Its pages are stored as text, and every later step reads that text.
-- **Quiz logic.** Drafting, chat edits by operations, the grounding check, grading, the settings a quiz applies to its respondents (shuffling, with each paper saved as served; time limits, paused while sharing is stopped; held results; hints; the AI switches), the note on what to teach again, and the responses as a CSV.
+- **Quiz logic.** Drafting, chat edits by operations, the grounding check, grading, the settings a quiz applies to its respondents (shuffling, with each paper saved as served; time limits, paused while the link is closed; answers checked one by one or at the end; held results; hints; the AI switches), the note on what to teach again, and the responses as a CSV.
 - **Pictures.** A figure boxed by the AI on the module's page and cropped by the server, or a Wikimedia Commons picture for a search term the AI names, copied and credited.
 - **AI layer.** One client for the Gemini API, with a chain of models per job and a rest list for models that refuse.
 - **Storage.** One SQLite file through bakery-orm; the uploaded files and each quiz's cover under `server/data/uploads`; the pictures on questions under `server/data/illustrations`.
@@ -177,7 +179,7 @@ Live at https://quiz.okyle.dev. The server runs on Node 24 (its package asks for
 5. Run `node --env-file=.env src/index.ts` in `server/` as a service, with `STATIC_DIR` set to the copy of `web/dist`. The unit restarts the process 3 s after it stops and caps it at 450 MB.
 6. Put the reverse proxy in front over HTTPS, passing `X-Forwarded-For`.
 
-A deploy script kept beside the repository does this over SSH: it builds the ORM and the pages, ships the code and installs the packages; with `--setup` it also writes the `.env`, the unit and the proxy's routing line; with `--data` it stops the service, copies the SQLite file with `VACUUM INTO` (a WAL database's newest pages sit in its `-wal` file, so a plain copy would miss them) together with the uploads and illustrations, and syncs the schema. It ends by restarting the service and reading `/api/health` on the box and through the domain; the live reply names the runtime, `node v24.21.0`.
+A deploy script kept beside the repository does this over SSH: it builds the ORM and the pages, ships the code, installs the packages and, on every run once the box has a database, syncs the box's schema (`bun run db:sync`), since a code-only deploy used to leave new columns missing there; with `--setup` it also writes the `.env`, the unit and the proxy's routing line; with `--data` it stops the service, copies the SQLite file with `VACUUM INTO` (a WAL database's newest pages sit in its `-wal` file, so a plain copy would miss them) together with the uploads and illustrations, and syncs the schema. It ends by restarting the service and reading `/api/health` on the box and through the domain; the live reply names the runtime, `node v24.21.0`.
 
 Bun can run the same files in production too (`bun src/index.ts`, as in development); it is not what runs.
 
@@ -227,14 +229,14 @@ silid/
                           (TakeView)
     src/layouts/          the app's frame, and the landing's with its footer
                           links (the sample quiz, Privacy, Terms)
-    src/components/       prompt box, question card (with its picture
-                          finder), the respondent's question, share card
-                          (with Practice or Graded), quiz actions, quiz
-                          thumbnail, icon picker, the activity square
-                          (Sparkline), account menu, the bell, the switch,
-                          the toast
-    src/composables/      API calls, sign-in state, the quiz list, the
-                          activity counts, the attempt, the toast
+    src/components/       prompt box, the building preview, question card
+                          (with its picture finder), the respondent's
+                          question, share card (with Practice, Test or
+                          Graded), quiz actions, quiz thumbnail, icon
+                          picker, the activity square (Sparkline), account
+                          menu, the bell, the switch, the toast
+    src/composables/      API calls, sign-in state, the quiz list, the quiz
+                          colors, the activity counts, the attempt, the toast
     src/styles/           design tokens and attribute utilities
     public/landing/       the landing's two screenshots
     scripts/              generators for the icon subset and the utilities
