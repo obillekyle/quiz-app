@@ -8,9 +8,11 @@ import { edited, type QuizSummary } from "../composables/quizzes"
 
 /**
  * A quiz on the home page: a card in the grid, a row in the list. The
- * thumbnail is its cover, else its icon, else its first letter on its color. A globe marks a
- * quiz anyone with the link can answer, and the square beside it is the
- * last 14 days of finished responses, one request for every card.
+ * thumbnail is its cover, else its icon, else its first letter on its color.
+ * The meta line counts the questions and the finished responses; the time
+ * of the last edit is the card's title. A globe marks a quiz anyone with
+ * the link can answer, and the square beside it is the last 14 days of
+ * finished responses, one request for every card.
  */
 const props = defineProps<{ quiz: QuizSummary; layout: "grid" | "list" }>()
 const activity = useActivity()
@@ -19,10 +21,19 @@ const shared = computed(
   () => props.quiz.status === "published" && !props.quiz.archived,
 )
 const SHARED = "Shared. Anyone with the link can answer."
+const responses = computed(() => {
+  const n = props.quiz.responses ?? 0
+  return n ? `${n} ${n === 1 ? "response" : "responses"}` : "No responses yet"
+})
 </script>
 
 <template>
-  <RouterLink :to="`/app/quiz/${quiz.id}`" class="card" :data-layout="layout">
+  <RouterLink
+    :to="`/app/quiz/${quiz.id}`"
+    class="card"
+    :data-layout="layout"
+    :title="`Edited ${edited(quiz.updatedAt)}`"
+  >
     <QuizThumb
       class="thumb"
       :id="quiz.id"
@@ -36,8 +47,8 @@ const SHARED = "Shared. Anyone with the link can answer."
       <span class="line">
         <span class="text"
           >{{ quiz.questions }}
-          {{ quiz.questions === 1 ? "question" : "questions" }} · Edited
-          {{ edited(quiz.updatedAt) }}</span
+          {{ quiz.questions === 1 ? "question" : "questions" }} ·
+          {{ responses }}</span
         >
         <em v-if="quiz.language === 'fil'">Filipino</em>
       </span>

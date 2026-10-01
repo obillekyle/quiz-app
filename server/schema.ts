@@ -71,6 +71,10 @@ export const quizzes = table("quizzes", {
   // maker's score instead of the AI's.
   aiCheck: Field.Bool(true),
   aiEssay: Field.Bool(true),
+  // Off: no "Show hint" on the questions (a graded quiz, Kyle's choice of
+  // 04:10: Practice shows answers and hints and allows retakes; Graded holds
+  // results, hides hints and allows one attempt per browser).
+  showHints: Field.Bool(true),
   ...Field.Timestamps(),
 })
 export const quizzesShareCode = Field.Unique(quizzes.shareCode)
@@ -152,6 +156,14 @@ export const responses = table("responses", {
   rating: Field.Int(null),
   createdAt: Field.Date.now(),
   finishedAt: Field.Int(null),
+  // Set when the quiz stops being shared while this attempt is open, so an
+  // overall time limit stops counting; sharing again moves `createdAt`
+  // forward by the paused span and clears it. `createdAt` is therefore the
+  // start of the attempt less any time it spent paused, not the clock time
+  // the respondent began.
+  pausedAt: Field.Int(null),
+  // The section the respondent typed under the name, if any ("7 Sampaguita").
+  section: Field.Varchar(80, null),
   // Left by a respondent when results are held back, to be told on release.
   notifyEmail: Field.Varchar(254, null),
   notifiedAt: Field.Int(null),

@@ -289,7 +289,9 @@ async function start() {
 
 /** A fresh attempt; the old one stays with the quiz maker as it was. */
 function startOver() {
-  nameInput.value = state.value?.name ?? nameInput.value
+  // The name field starts empty: on a shared classroom phone the next
+  // attempt is often another student's.
+  nameInput.value = ""
   dropAttempt(code)
   dropPace(code)
   held.value = null
@@ -1050,9 +1052,12 @@ const initial = (name: string) => (name.trim()[0] ?? "?").toUpperCase()
         >
           Back
         </button>
+        <!-- Filled once the question is answered: before that the answer is
+             the main action, and passing the question is the quiet one. -->
         <button
           type="button"
-          btn="primary"
+          :btn="byQ[current.id] ? 'primary' : 'quiet'"
+          class="pass"
           :disabled="busy || finishing"
           @click="next"
         >
@@ -1626,6 +1631,10 @@ const initial = (name: string) => (name.trim()[0] ?? "?").toUpperCase()
 .outline {
   border-color: var(--accent);
   background: transparent;
+  color: var(--accent);
+}
+/* Skip, as Material's text button: the accent on nothing. */
+.pass[btn="quiet"] {
   color: var(--accent);
 }
 

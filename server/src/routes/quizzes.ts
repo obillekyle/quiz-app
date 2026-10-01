@@ -4,8 +4,7 @@ import { basename, join } from 'node:path'
 import DB from 'bakery-orm'
 import { Hono, type Context } from 'hono'
 import { HTTPException } from 'hono/http-exception'
-import { generate, S } from '../ai/gemini.ts'
-import { draftQuiz, refineQuiz, applyOps, type QuestionDraft } from '../ai/quiz.ts'
+import { draftQuiz, refineQuiz, applyOps, teachAgainNote, type QuestionDraft } from '../ai/quiz.ts'
 import { requireUser, type User } from '../auth/session.ts'
 import { resultsMail, sendMail } from '../mail.ts'
 import { whenRead } from '../quiz/read.ts'
@@ -79,7 +78,7 @@ async function material(quizId: number) {
 
 const names = (sources: Source[]) => sources.map((s) => s.name)
 
-/** The signed-in user's quizzes, newest edit first, each with its question count. */
+/** The signed-in user's quizzes, newest edit first, each with its question count and its finished responses. */
 quizzes.get('/', async (c) => {
   const user = c.get('user')
   const rows = await DB.from('quizzes').where('quizzes.userId', user.id).orderBy('quizzes.updatedAt', 'DESC').array()
@@ -88,6 +87,12 @@ quizzes.get('/', async (c) => {
     .groupBy('questions.quizId')
     .array()
   const byQuiz = new Map(counts.map((r: any) => [Number(r.quizId), Number(r.n)]))
+  const done = await DB.from('responses')
+    .select({ quizId: 'responses.quizId', n: DB.count('*') })
+    .where('responses.status', 'finished')
+    .groupBy('responses.quizId')
+    .array()
+  const finishedBy = new Map(done.map((r: any) => [Number(r.quizId), Number(r.n)]))
   return c.json({
     quizzes: rows.map((q: any) => ({
       id: Number(q.id),
@@ -97,6 +102,7 @@ quizzes.get('/', async (c) => {
       archived: !!Number(q.archived),
       shareCode: q.shareCode,
       questions: byQuiz.get(Number(q.id)) ?? 0,
+      responses: finishedBy.get(Number(q.id)) ?? 0,
       createdAt: Number(q.createdAt),
       updatedAt: Number(q.updatedAt),
       ...settingsOf(q),
@@ -304,6 +310,30 @@ quizzes.patch('/:id', async (c) => {
     const any = await DB.from('questions').where('questions.quizId', quiz.id).exists()
     if (!any) throw new HTTPException(400, { message: 'Add at least one question before sharing the quiz.' })
   }
+  // Stop sharing pauses every open attempt's overall clock: the attempt is
+  // marked with the moment, and the deadline (start plus limit, see
+  // routes/public.ts) stands still while the mark is set. Sharing again
+  // moves each paused attempt's start forward by the span it waited and
+  // clears the mark, so no time is lost to the pause. Attempts of a quiz
+  // without an overall limit carry the mark too; it changes nothing there.
+  if (set.status === 'draft' && quiz.status === 'published')
+    await DB.Update.table('responses')
+      .set({ pausedAt: now() })
+      .where('responses.quizId', quiz.id)
+      .and('responses.status', 'open')
+      .and('responses.pausedAt', null)
+      .run()
+  if (set.status === 'published' && quiz.status === 'draft') {
+    const open = await DB.from('responses').where('responses.quizId', quiz.id).and('responses.status', 'open').array()
+    const t = now()
+    for (const r of open as any[]) {
+      if (r.pausedAt == null) continue
+      await DB.Update.table('responses')
+        .set({ createdAt: Number(r.createdAt) + Math.max(0, t - Number(r.pausedAt)), pausedAt: null })
+        .where('responses.id', r.id)
+        .run()
+    }
+  }
   const was = !!Number(quiz.showResults)
   const release = set.showResults === true && !was
   if (release) set.resultsReleasedAt = now()
@@ -414,8 +444,10 @@ quizzes.get('/:id/overview', async (c) => {
   return c.json({
     quiz: full.quiz,
     results: {
-      // Held: respondents see neither their score nor the answers yet.
-      held: !full.quiz.showResults && full.quiz.resultsReleasedAt == null,
+      // Held: respondents see neither their score nor the answers yet. Nothing
+      // is held until someone has finished, so a quiz with the switch off and
+      // no respondents (a fresh copy, say) has no results to release.
+      held: !full.quiz.showResults && full.quiz.resultsReleasedAt == null && finished.length > 0,
       releasedAt: full.quiz.resultsReleasedAt,
       // Finished respondents who left an email and have not been told.
       waiting: new Set(
@@ -498,7 +530,10 @@ async function answersOf(responseIds: number[]): Promise<any[]> {
 
 /**
  * "What to teach again": the AI reads the questions people missed, with
- * anonymous counts (never a name), and writes a short note for the teacher.
+ * anonymous counts (never a name), and writes a short note for the teacher
+ * that cites them by number (ai/quiz.ts, `teachAgainNote`). An essay still
+ * waiting for the maker's score is neither right nor wrong and is left out
+ * of the counts, as the overview leaves it out.
  */
 quizzes.post('/:id/insight', async (c) => {
   const quiz = await ownQuiz(Number(c.req.param('id')), c.get('user').id)
@@ -506,28 +541,23 @@ quizzes.post('/:id/insight', async (c) => {
   const full = await fullQuiz(id)
   const finished = (await DB.from('responses').where('responses.quizId', id).array()).filter((r: any) => r.status === 'finished')
   if (!finished.length) throw new HTTPException(400, { message: 'The note needs at least one finished response.' })
-  const answers = await answersOf(finished.map((r: any) => Number(r.id)))
-  const lines = full.questions.map((q, i) => {
+  const answers = (await answersOf(finished.map((r: any) => Number(r.id)))).filter((a) => !Number(a.pending) || Number(a.overridden))
+  const rows = full.questions.map((q, i) => {
     const mine = answers.filter((a) => Number(a.questionId) === q.id)
-    const wrong = mine.filter((a) => !Number(a.correct))
-    const picks =
-      q.kind === 'choice' || q.kind === 'truefalse'
-        ? q.choices.map((ch, k) => `${ch.text}${k === q.answer ? ' (correct)' : ''}: ${mine.filter((a) => Number(a.choice) === k).length}`).join('; ')
-        : ''
-    return `${i + 1}. [${q.topic}] ${q.prompt} | answered ${mine.length}, missed ${wrong.length}${picks ? ` | picks: ${picks}` : ''}`
+    return {
+      number: i + 1,
+      prompt: q.prompt,
+      topic: q.topic,
+      kind: q.kind,
+      answered: mine.length,
+      missed: mine.filter((a) => !Number(a.correct)).length,
+      picks:
+        q.kind === 'choice' || q.kind === 'truefalse'
+          ? q.choices.map((ch, k) => ({ text: ch.text, correct: k === q.answer, n: mine.filter((a) => Number(a.choice) === k).length }))
+          : [],
+    }
   })
-  const { data } = await generate<{ note: string }>({
-    task: 'insight',
-    system: [
-      'You help a teacher read quiz results.',
-      'From the questions, how many people missed each, and which wrong options they picked,',
-      'write "note": three or four short sentences on which ideas people misunderstood and what to teach again, naming the topics.',
-      'Be specific and plain. Do not praise. No lists. Write in the language of the quiz.',
-    ].join(' '),
-    parts: [{ text: `Quiz: ${full.quiz.title}\nResponses: ${finished.length}\n${lines.join('\n')}` }],
-    schema: S.obj({ note: S.str() }),
-    temperature: 0.3,
-  })
+  const { data } = await teachAgainNote({ title: full.quiz.title, language: full.quiz.language, finished: finished.length, questions: rows })
   const at = Math.floor(Date.now() / 1000)
   await DB.Update.table('quizzes').set({ insight: data.note, insightAt: at }).where('quizzes.id', id).run()
   return c.json({ insight: data.note, insightAt: at })
@@ -616,11 +646,70 @@ quizzes.get('/:id/responses', async (c) => {
       status: r.status,
       score: Number(r.score),
       total: Number(r.total),
+      // The start of the attempt less any time it spent paused while the quiz
+      // was not shared (the status change above moves it), so it is the
+      // clock the time limit runs on, not the moment the respondent began.
       createdAt: Number(r.createdAt),
       finishedAt: r.finishedAt == null ? null : Number(r.finishedAt),
       rating: r.rating == null ? null : Number(r.rating),
       pending: pending.get(Number(r.id)) ?? 0,
     })),
+  })
+})
+
+/** A CSV cell: quoted when it holds a comma, a quote or a line break, the quotes doubled. */
+const cell = (v: unknown) => {
+  const s = v == null ? '' : String(v)
+  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+}
+
+/** A Unix time as a local ISO date, "2026-10-02T03:50:12", the form a spreadsheet reads as a date. */
+function localIso(seconds: number | null) {
+  if (!seconds) return ''
+  const d = new Date(seconds * 1000)
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
+}
+
+/**
+ * The quiz's responses as a CSV for a spreadsheet (the DepEd e-Class Record
+ * is filled by hand otherwise): a row per respondent in name order, a column
+ * per question with the points that answer earned, and two header rows, the
+ * second holding each question's prompt cut to 60 characters. A UTF-8 BOM in
+ * front, so Excel reads the file as UTF-8 rather than the system code page.
+ */
+quizzes.get('/:id/responses.csv', async (c) => {
+  const quiz = await ownQuiz(Number(c.req.param('id')), c.get('user').id)
+  const id = Number(quiz.id)
+  const full = await fullQuiz(id)
+  const rows = await DB.from('responses').where('responses.quizId', id).array()
+  const answers = await answersOf(rows.map((r: any) => Number(r.id)))
+  const earned = new Map<string, number>(answers.map((a: any) => [`${a.responseId}:${a.questionId}`, Number(a.score)]))
+  const fixed = ['Name', 'Score', 'Total', 'Percent', 'Status', 'Started', 'Finished']
+  const head = [...fixed, ...full.questions.map((_, i) => `Q${i + 1}`), 'Rating']
+  const prompts = [...fixed.map(() => ''), ...full.questions.map((q) => q.prompt.slice(0, 60)), '']
+  const lines = [...rows]
+    .sort((a: any, b: any) => String(a.name).localeCompare(String(b.name)) || Number(a.id) - Number(b.id))
+    .map((r: any) => {
+      const total = Number(r.total)
+      return [
+        String(r.name),
+        Number(r.score),
+        total,
+        total ? Math.round((Number(r.score) / total) * 100) : '',
+        r.status === 'finished' ? 'Finished' : 'Still answering',
+        localIso(Number(r.createdAt)),
+        localIso(r.finishedAt == null ? null : Number(r.finishedAt)),
+        ...full.questions.map((q) => earned.get(`${r.id}:${q.id}`) ?? ''),
+        r.rating == null ? '' : Number(r.rating),
+      ]
+    })
+  const csv = '﻿' + [head, prompts, ...lines].map((row) => row.map(cell).join(',')).join('\r\n') + '\r\n'
+  const name = `${String(quiz.title).replace(/[\\/:*?"<>|\r\n]+/g, ' ').trim() || 'quiz'}-responses.csv`
+  const ascii = name.replace(/[^\x20-\x7e]/g, '_')
+  return c.body(csv, 200, {
+    'content-type': 'text/csv; charset=utf-8',
+    'content-disposition': `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(name)}`,
   })
 })
 

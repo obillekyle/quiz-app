@@ -112,6 +112,17 @@ const dayLabel = (d: Date) =>
   d.toLocaleDateString("en", { month: "short", day: "numeric" })
 const hovered = ref<number | null>(null)
 
+// A quiz that was shared once and taken off the link is not a draft any
+// more: it has attempts, or results it released. "Draft" is for one that has
+// never been shared.
+const sharedBefore = computed(
+  () =>
+    !!o.value &&
+    (o.value.takers > 0 ||
+      o.value.open > 0 ||
+      o.value.quiz.resultsReleasedAt != null),
+)
+
 // ---- the AI note ------------------------------------------------------------------
 const insight = useAction(async () => {
   await api(`/quizzes/${id.value}/insight`, { method: "POST" })
@@ -246,7 +257,11 @@ const avatarColor = (name: string) =>
               <div class="title-row">
                 <h1>{{ o.quiz.title }}</h1>
                 <span class="status" :data-status="o.quiz.status">{{
-                  o.quiz.status === "published" ? "Shared" : "Draft"
+                  o.quiz.status === "published"
+                    ? "Shared"
+                    : sharedBefore
+                      ? "Not shared"
+                      : "Draft"
                 }}</span>
                 <span v-if="o.quiz.archived" class="status">Archived</span>
                 <a
@@ -473,8 +488,8 @@ const avatarColor = (name: string) =>
                     insight.pending.value
                       ? "Writing…"
                       : o.insight
-                        ? "Write it again"
-                        : "Write the note"
+                        ? "Rewrite the note"
+                        : "Ask the AI for a note"
                   }}
                 </button>
               </div>
@@ -519,6 +534,15 @@ const avatarColor = (name: string) =>
           <section class="sec recent">
             <div class="sec-head">
               <h2>Recent respondents</h2>
+              <a
+                v-if="o.takers"
+                :href="`/api/quizzes/${id}/responses.csv`"
+                :download="`${o.quiz.title}-responses.csv`"
+                btn="quiet"
+                class="small"
+              >
+                <Icon name="download" :size="16" /> Download CSV
+              </a>
             </div>
             <RouterLink
               v-if="o.takers > o.recent.length"

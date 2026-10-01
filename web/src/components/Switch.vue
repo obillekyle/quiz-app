@@ -7,9 +7,21 @@ import Icon from "./Icon.vue"
  * target is the full height whatever the track draws. A button with
  * role="switch", so a <label> around it (the whole settings row) toggles
  * it too.
+ *
+ * The track draws no text, so the switch is named by `labelledby` (the id of
+ * the row's title) or, where there is no title element, by `label`. One of
+ * the two is required: a switch with no name reads as an empty button.
  */
 const on = defineModel<boolean>({ required: true })
-defineProps<{ disabled?: boolean }>()
+defineProps<{
+  disabled?: boolean
+  /** The id of the element that names this switch. */
+  labelledby?: string
+  /** The name itself, when nothing on the page can be pointed at. */
+  label?: string
+  /** The id of the element that describes it, shown under the title. */
+  describedby?: string
+}>()
 </script>
 
 <template>
@@ -18,6 +30,9 @@ defineProps<{ disabled?: boolean }>()
     role="switch"
     class="switch"
     :aria-checked="on"
+    :aria-labelledby="labelledby"
+    :aria-label="label"
+    :aria-describedby="describedby"
     :disabled="disabled"
     @click="on = !on"
   >

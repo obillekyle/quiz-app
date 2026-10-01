@@ -34,6 +34,7 @@ import okyle from "../assets/brands/okyle.png"
       <nav aria-label="This site">
         <RouterLink to="/register">Create an account</RouterLink>
         <RouterLink to="/login">Sign in</RouterLink>
+        <RouterLink to="/q/8FSqvXwx">Sample quiz</RouterLink>
         <RouterLink to="/privacy">Privacy</RouterLink>
         <RouterLink to="/terms">Terms</RouterLink>
       </nav>
@@ -120,14 +121,17 @@ import okyle from "../assets/brands/okyle.png"
     font-size: 14px;
     color: var(--muted);
   }
+  /* Five links at a phone's width go onto two lines, each link whole. */
   nav {
     display: flex;
-    gap: 18px;
+    flex-wrap: wrap;
+    gap: 8px 18px;
     font-size: 14px;
   }
   nav a {
     color: color-mix(in srgb, var(--ink) 70%, transparent);
     text-decoration: none;
+    white-space: nowrap;
 
     &:hover {
       color: var(--ink);

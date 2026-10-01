@@ -47,8 +47,8 @@ async function restore(id: number) {
     <div v-else-if="!archived.length" class="empty">
       <Icon name="archive" :size="32" />
       <p>
-        Nothing is archived. A quiz archived from its Quiz options shows here,
-        off Home.
+        Nothing is archived. Quizzes archived from their Quiz options show here,
+        out of the way.
       </p>
     </div>
     <template v-else>

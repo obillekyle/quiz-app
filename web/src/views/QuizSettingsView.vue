@@ -17,6 +17,7 @@ import {
   type QuizSettings,
   type ResultsState,
 } from "../composables/quizzes"
+import { toast } from "../composables/toast"
 
 /**
  * A quiz's Settings page, in Kyle's order: the quiz itself (name,
@@ -380,6 +381,7 @@ const archive = useAction(async (to: boolean) => {
     body: { archived: to },
   })
   refreshQuizzes()
+  toast(to ? "Archived. Its link no longer opens." : "Restored.")
 })
 const remove = useAction(async () => {
   const ok = await confirm.value?.ask({
@@ -392,6 +394,7 @@ const remove = useAction(async () => {
   await api(`/quizzes/${id.value}`, { method: "DELETE" })
   refreshQuizzes()
   await router.replace("/app")
+  toast("Quiz deleted.")
 })
 
 // ---- the switches' words --------------------------------------------------------------
@@ -640,8 +643,8 @@ const SWITCHES: Record<SwitchKey, { title: string; text: string }> = {
                 >
                 <Switch
                   :model-value="on(k)"
-                  :aria-labelledby="`s-${k}`"
-                  :aria-describedby="`d-${k}`"
+                  :labelledby="`s-${k}`"
+                  :describedby="`d-${k}`"
                   @update:model-value="toggle(k, $event)"
                 />
               </span>
@@ -736,8 +739,8 @@ const SWITCHES: Record<SwitchKey, { title: string; text: string }> = {
                 >
                 <Switch
                   :model-value="on(k)"
-                  :aria-labelledby="`s-${k}`"
-                  :aria-describedby="`d-${k}`"
+                  :labelledby="`s-${k}`"
+                  :describedby="`d-${k}`"
                   @update:model-value="toggle(k, $event)"
                 />
               </span>
@@ -803,8 +806,8 @@ const SWITCHES: Record<SwitchKey, { title: string; text: string }> = {
                 >
                 <Switch
                   :model-value="on(k)"
-                  :aria-labelledby="`s-${k}`"
-                  :aria-describedby="`d-${k}`"
+                  :labelledby="`s-${k}`"
+                  :describedby="`d-${k}`"
                   @update:model-value="toggle(k, $event)"
                 />
               </span>

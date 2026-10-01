@@ -34,6 +34,8 @@ export type QuizSummary = {
   archived: boolean
   shareCode: string
   questions: number
+  /** Finished responses. */
+  responses: number
   createdAt: number
   updatedAt: number
 } & QuizSettings

@@ -15,6 +15,7 @@ import {
   type Kind,
   type Question,
 } from "../composables/quizzes"
+import { toast } from "../composables/toast"
 
 const route = useRoute()
 const id = computed(() => Number(route.params.id))
@@ -105,6 +106,7 @@ async function save() {
     refreshQuizzes()
     savedFlash.value = true
     setTimeout(() => (savedFlash.value = false), 1800)
+    toast("Saved.")
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
   } finally {
@@ -1005,7 +1007,11 @@ main {
     }
   }
 
-  .workspace {
+  /* Both selectors: the wide layout's `[data-ai]` rule outranks `.workspace`
+     alone, and with the rail hidden the one shown pane would land in its
+     56px column (a 6px chat box at 390). */
+  .workspace,
+  .workspace[data-ai] {
     grid-template-columns: 1fr;
   }
   .rail {
@@ -1014,6 +1020,7 @@ main {
   .panel,
   main {
     display: none !important;
+    min-width: 0;
     border-right: 0;
   }
   .panel[data-phone-show],

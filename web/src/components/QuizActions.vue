@@ -6,6 +6,7 @@ import Icon from "./Icon.vue"
 import { api } from "../composables/api"
 import { useAction } from "../composables/fetch"
 import { refreshQuizzes } from "../composables/quizzes"
+import { toast } from "../composables/toast"
 
 /**
  * What can be done to a quiz, as a short list at the top of its overview's
@@ -28,6 +29,7 @@ const duplicate = useAction(async () => {
   })
   refreshQuizzes()
   await router.push(`/app/quiz/${r.id}`)
+  toast("Copied. This is the copy.")
 })
 const archive = useAction(async (to: boolean) => {
   await api(`/quizzes/${props.quizId}`, {
@@ -36,6 +38,7 @@ const archive = useAction(async (to: boolean) => {
   })
   refreshQuizzes()
   emit("changed")
+  toast(to ? "Archived. Its link no longer opens." : "Restored.")
 })
 const remove = useAction(async () => {
   const ok = await confirm.value?.ask({
@@ -48,6 +51,7 @@ const remove = useAction(async () => {
   await api(`/quizzes/${props.quizId}`, { method: "DELETE" })
   refreshQuizzes()
   await router.replace("/app")
+  toast("Quiz deleted.")
 })
 const failure = computed(
   () =>

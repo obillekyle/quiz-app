@@ -154,6 +154,61 @@ How to answer:
   })
 }
 
+/** One question's results as the note reads them: counts only, never a name. */
+export type MissRow = {
+  /** 1-based, in the quiz's order. */
+  number: number
+  prompt: string
+  topic: string
+  kind: Kind
+  /** Finished respondents who answered it (a skipped question is not counted). */
+  answered: number
+  missed: number
+  /** choice and truefalse: each option with how many picked it. */
+  picks: { text: string; correct: boolean; n: number }[]
+}
+
+/**
+ * "What to teach again": a short note for the teacher from the questions
+ * the class missed. The note names the questions by number with their miss
+ * counts and says how many finished, so every claim can be checked against
+ * the table on the overview; it is written about the class and the
+ * material, never to the teacher. Under five finished, it opens by saying
+ * the sample is too small to tell a pattern from, and reports rather than
+ * generalizes. Each respondent is one row of counts: no answer text leaves
+ * the server beyond the options' labels.
+ */
+export async function teachAgainNote(quiz: { title: string; language: 'en' | 'fil'; finished: number; questions: MissRow[] }) {
+  const n = quiz.finished
+  const few = n < 5
+  const system = `You read the results of one quiz and write "note", a short note to help its teacher decide what to teach again.
+
+How to write it:
+- Two to four sentences. No list, no heading, no praise, no greeting.
+- Cite the questions by number with their miss counts, in the form "Q3 and Q7, each missed by 4 of 12" or "Q5 (9 of 12 missed)". Every claim about what the class found hard names the question numbers it rests on. Say how many finished the quiz.
+- Say which idea in the material the missed questions share, when they share one, and what is worth going over again. Where the picks show a common wrong option, name it.
+- Write in the third person, about the class and the material: "the class", "respondents", "most who answered Q4". Never address the teacher; the words "you" and "your" do not appear.
+- ${
+    few
+      ? `Only ${n} finished, too few to tell a pattern from. Open with one sentence saying so, then report what those ${n} missed as what happened, not as a trend of the class.`
+      : `${n} finished, enough to speak of a pattern where several missed the same question. A question missed by one person only is not a pattern; leave it out.`
+  }
+- Write in ${quiz.language === 'fil' ? 'Filipino' : 'English'}, the language of the quiz.`
+
+  const lines = quiz.questions.map((q) => {
+    const picks = q.picks.length ? ` | picks: ${q.picks.map((p) => `${p.text}${p.correct ? ' (correct)' : ''}: ${p.n}`).join('; ')}` : ''
+    return `Q${q.number} [${q.topic}, ${q.kind}] ${q.prompt} | answered by ${q.answered}, missed by ${q.missed}${picks}`
+  })
+  const text = [`Quiz: ${quiz.title}`, `Finished: ${n}`, 'Questions, with how many answered each and how many of those missed it:', ...lines].join('\n')
+  return generate<{ note: string }>({
+    task: 'insight',
+    system,
+    parts: [{ text }],
+    schema: S.obj({ note: S.str('Two to four sentences citing questions by number with miss counts.') }),
+    temperature: 0.3,
+  })
+}
+
 /**
  * Applies operations to a list. Numbers refer to the list before any
  * operation, as the AI was told, so each question is tracked by its original

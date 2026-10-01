@@ -7,8 +7,10 @@ import { useFetch } from "../composables/fetch"
 import { edited, type FullQuiz } from "../composables/quizzes"
 
 /**
- * A quiz's Respondents page: everyone who answered, newest first, with their
- * score, and the ones still answering; each opens their answers.
+ * A quiz's Respondents page: everyone who answered, newest first unless
+ * sorted by name or score, with their score, and the ones still answering;
+ * each opens their answers. The CSV link downloads every row for a
+ * spreadsheet.
  */
 type Row = {
   id: number
@@ -39,12 +41,31 @@ const pending = computed(() =>
 )
 const essays = (n: number) => `${n} ${n === 1 ? "essay" : "essays"} to score`
 const find = ref("")
+
+// ---- the order: newest, by name, or by score either way ---------------------------
+type Sort = "newest" | "name" | "high" | "low"
+const sort = ref<Sort>("newest")
+const ratio = (r: Row) => (r.total ? r.score / r.total : 0)
+// A score order puts the ones still answering last: their score is not in yet.
+const done = (r: Row) => (r.status === "finished" ? 1 : 0)
+const ORDER: Record<Sort, (a: Row, b: Row) => number> = {
+  newest: (a, b) => b.id - a.id,
+  name: (a, b) => a.name.localeCompare(b.name) || b.id - a.id,
+  high: (a, b) => done(b) - done(a) || ratio(b) - ratio(a) || b.id - a.id,
+  low: (a, b) => done(b) - done(a) || ratio(a) - ratio(b) || b.id - a.id,
+}
 const rows = computed(() => {
   const q = find.value.trim().toLowerCase()
-  return q
+  const found = q
     ? all.value.filter((r) => r.name.toLowerCase().includes(q))
     : all.value
+  return [...found].sort(ORDER[sort.value])
 })
+
+const csvHref = computed(() => `/api/quizzes/${id.value}/responses.csv`)
+const csvName = computed(
+  () => `${quiz.value?.quiz.title ?? "quiz"}-responses.csv`,
+)
 
 const initial = (name: string) => (name.trim()[0] ?? "?").toUpperCase()
 const AVATARS = [
@@ -96,15 +117,26 @@ const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
           ><template v-if="pending">, {{ essays(pending) }}</template
           >.
         </p>
-        <label class="find">
-          <Icon name="search" :size="18" />
-          <input
-            v-model="find"
-            type="search"
-            placeholder="Find a name"
-            aria-label="Find a respondent by name"
-          />
-        </label>
+        <div class="tools">
+          <select v-model="sort" class="sort" aria-label="Sort the respondents">
+            <option value="newest">Newest</option>
+            <option value="name">Name</option>
+            <option value="high">Score high to low</option>
+            <option value="low">Score low to high</option>
+          </select>
+          <label class="find">
+            <Icon name="search" :size="18" />
+            <input
+              v-model="find"
+              type="search"
+              placeholder="Find a name"
+              aria-label="Find a respondent by name"
+            />
+          </label>
+          <a :href="csvHref" :download="csvName" btn class="csv">
+            <Icon name="download" :size="18" /> Download CSV
+          </a>
+        </div>
       </div>
 
       <div v-if="!all.length" class="empty">
@@ -168,11 +200,43 @@ const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
   font-size: 14px;
   color: var(--muted);
 }
+/* The sort, the search and the download, one row at the bar's right end:
+   the group takes the room beside the summary, so the three stay on a line
+   where there is one, and wrap only on a phone. */
+.tools {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.sort {
+  height: 40px;
+  padding: 0 34px 0 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-full);
+  background-color: var(--surface);
+  font: inherit;
+  font-size: 14px;
+  color: var(--ink);
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: 2px solid var(--accent);
+  }
+}
+.csv {
+  min-height: 40px;
+  padding: 0 16px;
+  border-radius: var(--radius-full);
+  font-size: 14px;
+}
 .find {
   display: flex;
   align-items: center;
   gap: 8px;
-  width: min(100%, 280px);
+  width: min(100%, 240px);
   height: 40px;
   padding: 0 12px;
   border: 1px solid var(--line);
@@ -283,6 +347,15 @@ const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 }
 
 @media (max-width: 560px) {
+  .tools {
+    width: 100%;
+  }
+  .sort,
+  .csv {
+    flex: 1;
+    height: 44px;
+    min-height: 44px;
+  }
   .find {
     width: 100%;
     height: 44px;

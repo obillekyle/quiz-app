@@ -1,0 +1,9 @@
+# Every text file is stored and checked out with LF, whatever the machine's
+# autocrlf says: the first commit was made on Windows with autocrlf on, and
+# git warned about every file. Binary assets are left alone.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.pdf binary
+*.woff2 binary
+*.ico binary

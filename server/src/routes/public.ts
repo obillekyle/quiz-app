@@ -212,9 +212,19 @@ function servedOrder(layout: Layout | null, questions: Question[]) {
  */
 const GRACE_MS = 30_000
 
-/** When an attempt's overall limit runs out, in ms since the epoch; null without one. */
-const deadlineOf = (r: any, rules: Rules) =>
-  rules.timeMode === 'overall' && rules.timeLimit ? (Number(r.createdAt) + rules.timeLimit) * 1000 : null
+/**
+ * When an attempt's overall limit runs out, in ms since the epoch; null
+ * without one. An attempt whose quiz stopped being shared is paused
+ * (`pausedAt`, set by the status change in routes/quizzes.ts): its clock
+ * stands where it stopped, so the deadline moves with the present. Sharing
+ * again moves `createdAt` forward by the paused span and clears the mark,
+ * after which start plus limit is the deadline again.
+ */
+const deadlineOf = (r: any, rules: Rules) => {
+  if (rules.timeMode !== 'overall' || !rules.timeLimit) return null
+  const paused = r.pausedAt == null ? 0 : Math.max(0, Math.floor(Date.now() / 1000) - Number(r.pausedAt))
+  return (Number(r.createdAt) + paused + rules.timeLimit) * 1000
+}
 
 /** What is left of an open attempt's overall limit, in ms; null without one. */
 const timeLeft = (r: any, rules: Rules) => {

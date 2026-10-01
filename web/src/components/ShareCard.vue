@@ -5,6 +5,7 @@ import Icon from "./Icon.vue"
 import { api } from "../composables/api"
 import { useAction } from "../composables/fetch"
 import { refreshQuizzes } from "../composables/quizzes"
+import { toast } from "../composables/toast"
 
 /**
  * A quiz's sharing: while it is shared, the link, a copy button and its QR
@@ -46,6 +47,11 @@ const setStatus = useAction(async (status: "draft" | "published") => {
   await api(`/quizzes/${props.quizId}`, { method: "PATCH", body: { status } })
   refreshQuizzes()
   emit("changed")
+  toast(
+    status === "published"
+      ? "Shared. Anyone with the link can answer."
+      : "Sharing stopped. The link no longer opens.",
+  )
 })
 </script>
 
