@@ -173,7 +173,7 @@ const searching = computed(
 .home {
   display: flex;
   flex-direction: column;
-  width: min(100%, 1120px);
+  width: min(100%, var(--page-w));
   padding: 28px var(--page-pad) 64px;
 }
 

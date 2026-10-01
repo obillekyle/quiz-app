@@ -6,6 +6,7 @@ import Icon from "../components/Icon.vue"
 import { api } from "../composables/api"
 import { pageCrumb } from "../composables/crumb"
 import { useAction, useFetch } from "../composables/fetch"
+import { below } from "../composables/respondents"
 import { edited, KIND_LABEL, type Question } from "../composables/quizzes"
 
 type Answer = {
@@ -62,7 +63,7 @@ onBeforeUnmount(() => (pageCrumb.value = null))
 /** Under the passing mark (75%), as the overview marks its average. */
 const low = computed(() => {
   const r = data.value?.response
-  return !!r?.total && r.score / r.total < 0.75
+  return !!r && below(r.score, r.total)
 })
 
 const confirm = ref<InstanceType<typeof ConfirmDialog>>()
@@ -318,7 +319,7 @@ async function saveScore(a: Answer) {
 
 <style scoped>
 .response {
-  width: min(100%, 1120px);
+  width: min(100%, var(--page-w));
   padding: 28px var(--page-pad) 64px;
 }
 

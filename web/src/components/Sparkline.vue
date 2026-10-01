@@ -79,13 +79,11 @@ const label = computed(() => {
     stroke-linejoin: round;
     vector-effect: non-scaling-stroke;
   }
+  /* No responses in the window: nothing is drawn, and the square keeps its
+     room so the cards' other marks stay in line. A flat line in a raised
+     square read as a button with a missing glyph. */
   &[data-quiet] {
-    background: color-mix(in srgb, var(--ink) 3%, var(--surface));
-    border-color: var(--line);
-
-    polyline {
-      stroke: color-mix(in srgb, var(--ink) 25%, transparent);
-    }
+    visibility: hidden;
   }
 }
 </style>

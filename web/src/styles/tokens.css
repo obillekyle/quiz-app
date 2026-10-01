@@ -87,6 +87,9 @@
     /* A page's side padding, and the trail's, so the trail starts above the
        page's heading at every width. */
     --page-pad: clamp(16px, 3vw, 40px);
+    /* A page's column. AppLayout reads this to place the trail over it, so
+       the number is written once. */
+    --page-w: 1120px;
 
     /* Motion: Material's emphasized curve, and its two halves for a thing
        arriving (decelerate) or leaving (accelerate). */

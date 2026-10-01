@@ -4,6 +4,13 @@ import { useRoute } from "vue-router"
 import Icon from "../components/Icon.vue"
 import QuizHead from "../components/QuizHead.vue"
 import { useFetch } from "../composables/fetch"
+import {
+  avatarColor,
+  below,
+  cap,
+  initial,
+  percent,
+} from "../composables/respondents"
 import { edited, type FullQuiz } from "../composables/quizzes"
 
 /**
@@ -85,22 +92,8 @@ const csvName = computed(
   () => `${quiz.value?.quiz.title ?? "quiz"}-responses.csv`,
 )
 
-const initial = (name: string) => (name.trim()[0] ?? "?").toUpperCase()
-const AVATARS = [
-  "#6b276c",
-  "#2f6fdb",
-  "#5c3715",
-  "#2e7d32",
-  "#c62828",
-  "#ef6c00",
-]
-const avatarColor = (name: string) =>
-  AVATARS[[...name].reduce((s, c) => s + c.charCodeAt(0), 0) % AVATARS.length]
-const pct = (r: Row) =>
-  r.total ? `${Math.round((r.score / r.total) * 100)}%` : ""
-/** Under the passing mark (75%), as the overview marks its average. */
-const low = (r: Row) => !!r.total && r.score / r.total < 0.75
-const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
+const pct = (r: Row) => percent(r.score, r.total)
+const low = (r: Row) => below(r.score, r.total)
 </script>
 
 <template>
@@ -207,7 +200,7 @@ const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
 <style scoped>
 .page {
-  width: min(100%, 1120px);
+  width: min(100%, var(--page-w));
   padding: 28px var(--page-pad) 64px;
 }
 .state {

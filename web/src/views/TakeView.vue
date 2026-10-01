@@ -37,6 +37,7 @@ import {
   type Held,
   type PublicQuiz,
 } from "../composables/take"
+import { initial, PASSING } from "../composables/respondents"
 
 /*
  * A shared quiz, answered with a name and no account: the respondent's side
@@ -759,7 +760,7 @@ const pct = computed(() =>
   state.value && state.value.total ? score.value / state.value.total : 0,
 )
 const headline = computed(() =>
-  pct.value >= 0.75
+  pct.value >= PASSING
     ? "Well done"
     : pct.value >= 0.5
       ? "Good work"
@@ -924,8 +925,6 @@ function openReview() {
   stage.value = "review"
   window.scrollTo({ top: 0 })
 }
-
-const initial = (name: string) => (name.trim()[0] ?? "?").toUpperCase()
 </script>
 
 <template>

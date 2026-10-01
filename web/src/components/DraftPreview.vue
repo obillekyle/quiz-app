@@ -33,7 +33,7 @@ const on = (card: number, piece: number) => tick.value >= card * PIECES + piece
 <template>
   <div class="preview">
     <p class="phase" role="status" aria-live="polite">{{ status }}</p>
-    <p class="note">The AI is drafting your quiz. It takes about 20 seconds.</p>
+    <p class="note">The AI is drafting your quiz. It takes about 15 seconds.</p>
     <div class="cards" aria-hidden="true">
       <div v-for="c in CARDS" :key="c" class="card">
         <div class="row" :data-on="on(c - 1, 0) || undefined">

@@ -34,8 +34,13 @@ export function normalizeAnswer(s: string) {
     .normalize('NFKD')
     .replace(/\p{M}+/gu, '')
     .toLowerCase()
+    // A typed minus sign (U+2212) or en dash before a number is a minus.
+    .replace(/[−–](?=\d)/g, '-')
     .replace(/[^\p{L}\p{N}\s.-]/gu, ' ')
-    .replace(/(?<!\d)[.-]|[.-](?!\d)/g, ' ')
+    // A point or a hyphen stays only as part of a number: between digits, or
+    // leading one ("-38.8", ".5"). The rule used to drop a leading sign, so
+    // "38.8" matched an accepted "-38.8" with no AI asked.
+    .replace(/(?<!\d|\s|^)[.-]|[.-](?!\d)/g, ' ')
     .split(/\s+/)
     .filter(Boolean)
     .map((w) => NUMBERS[w] ?? w)

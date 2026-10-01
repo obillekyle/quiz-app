@@ -79,7 +79,7 @@ async function restore(id: number) {
 
 <style scoped>
 .page {
-  width: min(100%, 1120px);
+  width: min(100%, var(--page-w));
   padding: 28px var(--page-pad) 64px;
 
   h1 {

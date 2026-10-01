@@ -8,6 +8,7 @@
     "db:sync": "bun node_modules/bakery-orm/src/sync/index.ts",
     "db:sync:node": "node --env-file-if-exists=.env node_modules/bakery-orm/dist/sync/index.js",
     "typecheck": "tsc --noEmit",
+    "test": "bun test src",
     "seed": "bun scripts/seed.ts"
   },
   "engines": {

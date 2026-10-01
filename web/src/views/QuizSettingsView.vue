@@ -993,7 +993,7 @@ const SWITCHES: Record<SwitchKey, { title: string; text: string }> = {
 
 <style scoped>
 .page {
-  width: min(100%, 1120px);
+  width: min(100%, var(--page-w));
   padding: 28px var(--page-pad) 64px;
 }
 .state {

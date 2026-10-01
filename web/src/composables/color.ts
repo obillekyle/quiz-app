@@ -17,9 +17,6 @@ export const PALETTE: { hex: string; name: string }[] = [
 export const DARK_INK = "#1a1a1a"
 export const WHITE = "#ffffff"
 
-export const isHex = (s: unknown): s is string =>
-  typeof s === "string" && /^#[0-9a-f]{6}$/i.test(s)
-
 const rgb = (hex: string): [number, number, number] => [
   parseInt(hex.slice(1, 3), 16),
   parseInt(hex.slice(3, 5), 16),

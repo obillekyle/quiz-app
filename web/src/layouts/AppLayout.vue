@@ -144,7 +144,7 @@ const trail = computed<Crumb[]>(() => {
 // at the window's edge while it is wider than 900 px, and centers its page in
 // what is left, less the scrollbar its page column always keeps room for
 // (measured once, since its width depends on the platform).
-const PAGE_W = 1120
+const pageW = ref(1120)
 const PANEL_W = 360
 const contentEl = ref<HTMLElement>()
 const contentW = ref(0)
@@ -153,6 +153,11 @@ let sizer: ResizeObserver | undefined
 onMounted(() => {
   sizer = new ResizeObserver(([e]) => (contentW.value = e!.contentRect.width))
   if (!contentEl.value) return
+  // The column's width as the stylesheet has it, so the two cannot disagree.
+  pageW.value =
+    parseFloat(
+      getComputedStyle(document.documentElement).getPropertyValue("--page-w"),
+    ) || 1120
   sizer.observe(contentEl.value)
   const probe = document.createElement("div")
   probe.style.cssText =
@@ -167,7 +172,7 @@ const shift = computed(() => {
     route.name === "overview" && contentW.value > 900
       ? PANEL_W + gutter.value
       : 0
-  return Math.max(0, Math.floor((contentW.value - panel - PAGE_W) / 2))
+  return Math.max(0, Math.floor((contentW.value - panel - pageW.value) / 2))
 })
 
 // ---- search: kept in the address (?q=), so the home page filters by it ------

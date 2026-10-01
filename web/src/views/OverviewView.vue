@@ -9,6 +9,13 @@ import Icon from "../components/Icon.vue"
 import { api } from "../composables/api"
 import { useAction, useFetch } from "../composables/fetch"
 import {
+  avatarColor,
+  cap,
+  initial,
+  PASSING,
+  PASSING_PERCENT,
+} from "../composables/respondents"
+import {
   BLOOM,
   edited,
   KIND_LABEL,
@@ -125,7 +132,8 @@ const BLOOM_LABEL: Record<string, string> = {
 // The number a teacher acts on: an average under 75%, the passing mark in
 // Philippine schools (DepEd Order No. 8, s. 2015).
 const low = computed(
-  () => !!o.value?.takers && o.value.average != null && o.value.average < 0.75,
+  () =>
+    !!o.value?.takers && o.value.average != null && o.value.average < PASSING,
 )
 
 // ---- responses per day, the last 14 days (local time) -------------------------
@@ -193,24 +201,12 @@ const waitingText = (r: ResultsState) =>
 
 const ago = (t: number) => edited(t)
 /** "Today", for a cell of its own; `ago` stays lowercase mid-sentence. */
-const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 const REASON: Record<string, string> = {
   wrong: "An answer is wrong",
   harmful: "Harmful or unsafe content",
   copied: "Copies someone else’s work",
   other: "Something else",
 }
-const initial = (name: string) => (name.trim()[0] ?? "?").toUpperCase()
-const AVATARS = [
-  "#6b276c",
-  "#2f6fdb",
-  "#5c3715",
-  "#2e7d32",
-  "#c62828",
-  "#ef6c00",
-]
-const avatarColor = (name: string) =>
-  AVATARS[[...name].reduce((s, c) => s + c.charCodeAt(0), 0) % AVATARS.length]
 </script>
 
 <template>
@@ -423,7 +419,7 @@ const avatarColor = (name: string) =>
               <strong :data-none="o.average == null || undefined">{{
                 pct(o.average == null ? null : shown.average)
               }}</strong>
-              <small v-if="low">Under 75% passing</small>
+              <small v-if="low">Under {{ PASSING_PERCENT }}% passing</small>
             </div>
             <div class="stat">
               <span>Highest</span>
@@ -759,7 +755,7 @@ const avatarColor = (name: string) =>
 /* The page itself: the numbers and the lists on the background, a line
    between sections, no box around any of them. */
 .main {
-  width: min(100%, 1120px);
+  width: min(100%, var(--page-w));
   margin-inline: auto;
   padding: 28px var(--page-pad) 64px;
 }

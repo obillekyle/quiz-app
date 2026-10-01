@@ -14,7 +14,7 @@ QuizApp is BPC Competitors' entry to the RAITE 2026 AI in Education Hackathon (P
 
 ### Making a quiz
 
-- **Draft first, chat refines.** The prompt box takes a request ("15 questions, mixed kinds, Grade 7") and PDFs or photos. The quiz opens with a full draft about 20 s later, and chat messages change it from there ("make question 4 harder and add two true or false"). While the draft is written, the questions pane builds skeleton cards under the name of the phase ("Reading the module", "Writing the questions", "Checking each quote against the file"), and the prompt box wears a turning gradient ring with colored shadows; at rest it has a neutral outline. Each reply from the AI is revealed word by word as it lands.
+- **Draft first, chat refines.** The prompt box takes a request ("15 questions, mixed kinds, Grade 7") and PDFs or photos. The quiz opens with a full draft about 15 s later (13 to 18 s over four measured drafts), and chat messages change it from there ("make question 4 harder and add two true or false"). While the draft is written, the questions pane builds skeleton cards under the name of the phase ("Reading the module", "Writing the questions", "Checking each quote against the file"), and the prompt box wears a turning gradient ring with colored shadows; at rest it has a neutral outline. Each reply from the AI is revealed word by word as it lands.
 - **Four kinds of question:** multiple choice, true or false, identification and essay. Each question carries an explanation shown after answering, a topic taken from the material's headings, a Bloom level and its points. Each option of a multiple-choice or true-or-false question says why it is right or wrong.
 - **Every question shows its source.** The supporting sentence sits under the question with its file and page ("Found in science7-metals.pdf, page 1"). A sentence that is not in the material is marked "Not found in the file", so it can be fixed before the quiz is shared.
 - **Hand editing.** Every field of every question can be changed, and questions can be added, moved and deleted. Each save checks every quote again. A save or a chat edit keeps each question's row, so the answers people have already given stay with their questions; deleting a question deletes its answers, and the editor says how many people have answered.
@@ -136,6 +136,7 @@ bun install
 cp .env.example .env     # then fill in GEMINI_API_KEY, at least
 bun run db:sync          # creates the tables from schema.ts
 bun run dev              # restarts on every change
+bun test src             # the rules as plain functions: grounding, typed answers, chat edits, limits
 ```
 
 The web app, on port 3220, in a second terminal:
@@ -180,7 +181,7 @@ Live at https://quiz.okyle.dev. The server runs on Node 24 (its package asks for
 5. Run `node --env-file=.env src/index.ts` in `server/` as a service, with `STATIC_DIR` set to the copy of `web/dist`. The unit restarts the process 3 s after it stops and caps it at 450 MB.
 6. Put the reverse proxy in front over HTTPS, passing `X-Forwarded-For`.
 
-A deploy script kept beside the repository does this over SSH: it builds the ORM and the pages, ships the code, installs the packages and, on every run once the box has a database, syncs the box's schema (`bun run db:sync`), since a code-only deploy used to leave new columns missing there; with `--setup` it also writes the `.env`, the unit and the proxy's routing line; with `--data` it stops the service, copies the SQLite file with `VACUUM INTO` (a WAL database's newest pages sit in its `-wal` file, so a plain copy would miss them) together with the uploads and illustrations, and syncs the schema. It ends by restarting the service and reading `/api/health` on the box and through the domain; the live reply names the runtime, `node v24.21.0`.
+A deploy script kept beside the repository does this over SSH: it runs the server's tests and stops if one fails, builds the ORM and the pages, ships the code, installs the packages and, on every run once the box has a database, syncs the box's schema (`bun run db:sync`), since a code-only deploy used to leave new columns missing there; with `--setup` it also writes the `.env`, the unit and the proxy's routing line; with `--data` it stops the service, copies the SQLite file with `VACUUM INTO` (a WAL database's newest pages sit in its `-wal` file, so a plain copy would miss them) together with the uploads and illustrations, and syncs the schema. It ends by restarting the service and reading `/api/health` on the box and through the domain; the live reply names the runtime, `node v24.21.0`.
 
 Bun can run the same files in production too (`bun src/index.ts`, as in development); it is not what runs.
 
