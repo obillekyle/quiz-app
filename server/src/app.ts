@@ -15,8 +15,9 @@ export const app = new Hono().basePath('/api')
 
 // A body is read whole before a route looks at it, and the deployed process
 // has 450 MB: a few 100 MB posts to any route, signed in or not, would get it
-// killed. Half a megabyte covers the largest JSON the app sends (a quiz of
-// fifty questions with its explanations); the three routes that take a file
+// killed. Half a megabyte covers the largest JSON the app sends: the builder's
+// Save measured 9,674 bytes for 11 questions, 879 a question, so the limit
+// holds a quiz of about 600. The three routes that take a file
 // get the largest file they accept (a 25 MB PDF) and its form's overhead.
 const tooLarge = (c: { json: (body: object, status: 413) => Response }) =>
   c.json({ error: 'That is too large to send. Use a smaller file or a shorter text.' }, 413)
