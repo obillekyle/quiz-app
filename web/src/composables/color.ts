@@ -79,6 +79,9 @@ export function mix(hex: string, target: string, amount: number) {
 /** The surfaces the respondent page lays its accent on: the light and the dark `--surface`. */
 export const LIGHT_SURFACE = "#ffffff"
 export const DARK_SURFACE = "#1c1c1c"
+/** The page behind them: the light and the dark `--bg`. */
+export const LIGHT_BG = "#f8f8f8"
+export const DARK_BG = "#141414"
 
 /**
  * `hex` as an accent on `surface`: moved toward black on a light surface
@@ -100,4 +103,25 @@ export function readableOn(hex: string, surface: string, ratio = 4.5) {
     else lo = mid
   }
   return mix(hex, toward, hi)
+}
+
+/**
+ * `hex` as text or an icon drawn on any of `grounds` (the surface, the page
+ * behind it, a tint of the color itself): the tone that reads on the one
+ * that asks the most of it. The grounds are all light or all dark, so the
+ * tone that reaches `ratio` on the hardest of them passes it on the rest.
+ * A fill keeps `hex` itself with `inkFor(hex)` on it; only the color drawn
+ * as text takes this tone. The palette's orange (#ef6c00) on white, the
+ * light page (#f8f8f8) and its own 16% tint (#fce7d6) becomes #ae4e00:
+ * 5.4:1, 5.1:1 and 4.5:1.
+ */
+export function readableOnAll(hex: string, grounds: string[], ratio = 4.5) {
+  return grounds
+    .map((g) => readableOn(hex, g, ratio))
+    .reduce((far, tone) =>
+      Math.min(...grounds.map((g) => contrast(tone, g))) >
+      Math.min(...grounds.map((g) => contrast(far, g)))
+        ? tone
+        : far,
+    )
 }

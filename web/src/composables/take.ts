@@ -54,6 +54,11 @@ export type PublicQuiz = {
     showHints: boolean
     aiCheck: boolean
     aiEssay: boolean
+    /**
+     * When an answer is checked: "each" as it is confirmed, locked from then
+     * on; "end" when the quiz is finished, changeable until then.
+     */
+    feedback: "each" | "end"
   }
   questions: PublicQuestion[]
 }
@@ -63,6 +68,7 @@ export type Feedback = {
   questionId: number
   skipped: boolean
   held?: false
+  pick?: false
   correct: boolean
   score: number
   points: number
@@ -87,12 +93,30 @@ export type Saved = {
   questionId: number
   skipped: false
   held: true
+  pick?: false
   points: number
   choice: number | null
   text: string | null
 }
 
-export type Given = Feedback | Saved
+/**
+ * An answer on a quiz checked at the end, while the attempt is open: what
+ * was chosen or typed, saved and still changeable, with nothing judged.
+ */
+export type Picked = {
+  questionId: number
+  skipped?: false
+  held?: false
+  pick: true
+  points: number
+  choice: number | null
+  text: string | null
+}
+
+export type Given = Feedback | Saved | Picked
+
+/** What a respondent has chosen or typed for a question, before it is sent. */
+export type Draft = { choice?: number; text?: string }
 
 /**
  * The order an attempt is shown in: question ids, and for a question whose
@@ -218,11 +242,7 @@ export const takeApi = {
     api<Attempt>(`/attempts/${h.attempt}`, {
       headers: { "x-attempt-token": h.token },
     }),
-  answer: (
-    h: Held,
-    questionId: number,
-    given: { choice?: number; text?: string },
-  ) =>
+  answer: (h: Held, questionId: number, given: Draft) =>
     api<Given>(`/attempts/${h.attempt}/answers`, {
       body: { questionId, ...given },
       headers: { "x-attempt-token": h.token },
@@ -233,10 +253,20 @@ export const takeApi = {
       body:
         questionId == null ? { reason, note } : { reason, note, questionId },
     }),
-  /** While the results are held, the reply carries no score. */
+  /**
+   * While the results are held, the reply carries no score. On a quiz
+   * checked at the end, with the results shown, it carries every question's
+   * feedback too.
+   */
   finish: (h: Held, rating?: number) =>
     api<
-      | { score: number; total: number; correct: number; answered: number }
+      | {
+          score: number
+          total: number
+          correct: number
+          answered: number
+          answers?: Feedback[]
+        }
       | { held: true; total: number; answered: number }
     >(`/attempts/${h.attempt}/finish`, {
       body: rating ? { rating } : {},

@@ -650,6 +650,7 @@ const avatarColor = (name: string) =>
             :questions="o.shape.questions"
             :show-results="o.quiz.showResults"
             :show-hints="o.quiz.showHints"
+            :feedback="o.quiz.feedback"
             :allow-retake="o.quiz.allowRetake"
             :archived="o.quiz.archived"
             @changed="refresh"

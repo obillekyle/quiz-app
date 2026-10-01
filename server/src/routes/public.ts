@@ -403,9 +403,14 @@ respond.get('/attempts/:id', async (c) => {
 })
 
 /**
- * One answer: graded, stored once (a second answer to the same question gets
- * the first's reply). Past an overall limit and its grace it is refused, with
- * `field: "time"` so the page knows to finish.
+ * One answer, graded and stored. On a quiz checked as it goes ("each") it
+ * is stored once: a second answer to the same question gets the first's
+ * reply. On a quiz checked at the end, an open attempt's answer can be
+ * replaced: a different value is graded again and takes the stored row's
+ * place, the same value comes back as it was stored (no second AI call),
+ * and the reply is the pick, never a verdict. Past an overall limit and its
+ * grace an answer is refused, with `field: "time"` so the page knows to
+ * finish.
  */
 respond.post('/attempts/:id/answers', async (c) => {
   const body = await c.req.json().catch(() => ({}))
@@ -419,39 +424,51 @@ respond.post('/attempts/:id/answers', async (c) => {
   const rules = rulesOf(quiz)
   const q = full.questions.find((x) => x.id === Number(body.questionId))
   if (!q) throw new HTTPException(404, { message: 'This question is not in the quiz.' })
-  const reply = (a: Given & Graded) => (rules.results ? feedback(q, a) : saved(q, a))
+  const atEnd = rules.feedback === 'end'
+  const reply = (a: Given & Graded) => (atEnd ? pick(q, a) : rules.results ? feedback(q, a) : saved(q, a))
+
+  let choice: number | null = null
+  let text: string | null = null
+  if (q.kind === 'choice' || q.kind === 'truefalse') choice = Number.isInteger(body.choice) ? body.choice : null
+  else text = typeof body.text === 'string' ? body.text.slice(0, 8000) : ''
 
   const done = await DB.from('answers').where('answers.responseId', r.id).and('answers.questionId', q.id).fetch()
-  if (done) return c.json(reply(graded(done)))
+  if (done) {
+    const before = graded(done)
+    if (!atEnd || (before.choice === choice && (before.text ?? null) === text)) return c.json(reply(before))
+  }
 
   const deadline = deadlineOf(r, rules)
   if (deadline != null && Date.now() > deadline + GRACE_MS)
     return c.json({ error: 'The time for this quiz is up, so this answer was not saved.', field: 'time' }, 409)
 
-  let result: Graded
-  let choice: number | null = null
-  let text: string | null = null
-  if (q.kind === 'choice' || q.kind === 'truefalse') {
-    choice = Number.isInteger(body.choice) ? body.choice : null
-    result = gradeChoice(q, choice)
-  } else {
-    const typed: string = typeof body.text === 'string' ? body.text.slice(0, 8000) : ''
-    text = typed
-    result = q.kind === 'identify' ? await gradeTyped(q, typed, rules.ai) : await gradeEssay(q, typed, rules.ai)
+  const result: Graded =
+    q.kind === 'choice' || q.kind === 'truefalse'
+      ? gradeChoice(q, choice)
+      : q.kind === 'identify'
+        ? await gradeTyped(q, text ?? '', rules.ai)
+        : await gradeEssay(q, text ?? '', rules.ai)
+  const row = {
+    choice,
+    text,
+    correct: result.correct,
+    score: result.score,
+    verdict: result.verdict,
+    byAi: result.byAi,
+    pending: !!result.pending,
   }
-  await DB.Insert.into('answers')
-    .values({
-      responseId: r.id,
-      questionId: q.id,
-      choice,
-      text,
-      correct: result.correct,
-      score: result.score,
-      verdict: result.verdict,
-      byAi: result.byAi,
-      pending: !!result.pending,
-    })
-    .run()
+  if (done) {
+    // A replaced answer starts over: a score the quiz maker gave belonged to the answer it replaces.
+    await DB.Update.table('answers').set({ ...row, overridden: false }).where('answers.id', done.id).run()
+  } else {
+    // Two sends of a first answer can both pass the lookup above (a double
+    // press, a retry over a slow grading); the later one replaces the row
+    // the earlier one made rather than adding a second.
+    const raced = await DB.from('answers').where('answers.responseId', r.id).and('answers.questionId', q.id).fetch()
+    if (raced && atEnd) await DB.Update.table('answers').set({ ...row, overridden: false }).where('answers.id', raced.id).run()
+    else if (raced) return c.json(reply(graded(raced)))
+    else await DB.Insert.into('answers').values({ responseId: r.id, questionId: q.id, ...row }).run()
+  }
   return c.json(reply({ choice, text, ...result }))
 })
 
@@ -459,7 +476,10 @@ respond.post('/attempts/:id/answers', async (c) => {
  * Finishing totals the score; a rating (1 to 5) may come with it or after.
  * It works past a time limit too: a late finish is how an attempt ends when
  * the clock runs out. While the results are held, the reply says only how
- * many were answered.
+ * many were answered. On a quiz checked at the end, this is where the
+ * answers are revealed: with the results shown, the reply carries every
+ * question's feedback in the order the attempt was shown, the skipped ones
+ * included, as the finished attempt's own state does.
  */
 respond.post('/attempts/:id/finish', async (c) => {
   const body = await c.req.json().catch(() => ({}))
@@ -478,7 +498,20 @@ respond.post('/attempts/:id/finish', async (c) => {
     .where('responses.id', r.id)
     .run()
   if (!rules.results) return c.json({ held: true, total: Number(r.total), answered: rows.length })
-  return c.json({ score, total: Number(r.total), correct: rows.filter((a: any) => Number(a.correct)).length, answered: rows.length })
+  const totals = { score, total: Number(r.total), correct: rows.filter((a: any) => Number(a.correct)).length, answered: rows.length }
+  if (rules.feedback !== 'end') return c.json(totals)
+  const full = await fullQuiz(Number(r.quizId))
+  const given = new Map(rows.map((a: any) => [Number(a.questionId), a]))
+  const byId = new Map(full.questions.map((x) => [x.id, x]))
+  const none = { choice: null, text: null, correct: false, score: 0, verdict: null, byAi: false }
+  return c.json({
+    ...totals,
+    answers: servedOrder(readLayout(r.layout), full.questions).order.map((id) => {
+      const x = byId.get(id)!
+      const a = given.get(id)
+      return a ? feedback(x, graded(a)) : feedback(x, none, true)
+    }),
+  })
 })
 
 /**

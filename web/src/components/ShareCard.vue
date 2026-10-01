@@ -12,13 +12,15 @@ import { toast } from "../composables/toast"
  * code; while it is a draft, the way to share it. On the overview's panel,
  * and larger on the quiz's Sharing page, with the QR code to download.
  *
- * Above the link, the Practice or Graded choice: a bundle over three of the
- * Settings page's switches. Practice has them all on (the answer and its
- * explanation after each question, hints, retakes); Graded has them all off
- * (scores held until released, no hints, one attempt per browser). Any other
- * mix is Custom, a state the Settings page sets and this control only
- * reports. The small card shows the state in a sentence with a way to the
- * Sharing page; the large one carries the control.
+ * Above the link, the choice of Practice, Test or Graded: a bundle over four
+ * of the quiz's settings. Practice checks each answer as it is confirmed and
+ * locks it, with hints and retakes. Test saves answers unchecked, lets them
+ * change until the quiz is finished and shows the score and the answers
+ * then; no hints, retakes allowed. Graded is Test with the results held
+ * until released and one attempt per browser. Any other mix is Custom, a
+ * state this control only reports. The small card shows the state in a
+ * sentence with a way to the Sharing page; the large one carries the
+ * control.
  */
 const props = withDefaults(
   defineProps<{
@@ -26,7 +28,8 @@ const props = withDefaults(
     status: "draft" | "published"
     shareCode: string
     questions: number
-    /** The three settings the choice bundles. */
+    /** The four settings the choice bundles. */
+    feedback: "each" | "end"
     showResults: boolean
     showHints: boolean
     allowRetake: boolean
@@ -68,55 +71,95 @@ const setStatus = useAction(async (status: "draft" | "published") => {
   )
 })
 
-// ---- practice or graded ---------------------------------------------------------------
-type Choice = "practice" | "graded"
+// ---- practice, test or graded ---------------------------------------------------------
+type Choice = "practice" | "test" | "graded"
 type Mode = Choice | "custom"
 
 /** What each option sets, saved in one request. */
 const BUNDLE: Record<
   Choice,
-  Pick<FullQuiz["quiz"], "showResults" | "showHints" | "allowRetake">
+  Pick<
+    FullQuiz["quiz"],
+    "feedback" | "showResults" | "showHints" | "allowRetake"
+  >
 > = {
-  practice: { showResults: true, showHints: true, allowRetake: true },
-  graded: { showResults: false, showHints: false, allowRetake: false },
+  practice: {
+    feedback: "each",
+    showResults: true,
+    showHints: true,
+    allowRetake: true,
+  },
+  test: {
+    feedback: "end",
+    showResults: true,
+    showHints: false,
+    allowRetake: true,
+  },
+  graded: {
+    feedback: "end",
+    showResults: false,
+    showHints: false,
+    allowRetake: false,
+  },
 }
 const OPTIONS: { value: Choice; label: string; text: string }[] = [
   {
     value: "practice",
     label: "Practice",
-    text: "Each answer shows the correct answer, the explanation and the source sentence. Hints are on, and the quiz can be taken again.",
+    text: "Each answer is checked when it is confirmed, with the explanation and the source sentence. A checked answer cannot be changed.",
+  },
+  {
+    value: "test",
+    label: "Test",
+    text: "Answers can be changed until the quiz is finished. The score and the answers show at the end.",
   },
   {
     value: "graded",
     label: "Graded",
-    text: "Scores and answers are held until you release them. No hints, and one attempt per browser.",
+    text: "Answers can be changed until the quiz is finished. Scores and answers are held until you release them. One attempt per browser.",
   },
 ]
 const LABEL: Record<Mode, string> = {
   practice: "Practice",
+  test: "Test",
   graded: "Graded",
   custom: "Custom",
 }
 
-/** The mode the three settings add up to. */
+/** The mode the four settings add up to. */
 const fromProps = computed<Mode>(() => {
-  const { showResults, showHints, allowRetake } = props
-  if (showResults && showHints && allowRetake) return "practice"
-  if (!showResults && !showHints && !allowRetake) return "graded"
-  return "custom"
+  const found = OPTIONS.find((o) => {
+    const b = BUNDLE[o.value]
+    return (
+      b.feedback === props.feedback &&
+      b.showResults === props.showResults &&
+      b.showHints === props.showHints &&
+      b.allowRetake === props.allowRetake
+    )
+  })
+  return found?.value ?? "custom"
 })
 /** The option chosen, shown while its save is on the way and the parent refreshes. */
 const picked = ref<Choice | null>(null)
 watch(fromProps, () => (picked.value = null))
 const mode = computed<Mode>(() => picked.value ?? fromProps.value)
 
-/** The three settings as words, for the Custom state. */
+/** The four settings as words, for the Custom state. */
 const values = computed(() => [
   {
+    name: "Answers",
+    value:
+      props.feedback === "each"
+        ? "checked when confirmed, then locked"
+        : "changeable until the quiz is finished",
+  },
+  {
     name: "Scores and answers",
-    value: props.showResults
-      ? "shown after each answer"
-      : "held until you release them",
+    value: !props.showResults
+      ? "held until you release them"
+      : props.feedback === "each"
+        ? "shown after each answer"
+        : "shown at the end",
   },
   { name: "Hints", value: props.showHints ? "on" : "off" },
   {
@@ -127,8 +170,8 @@ const values = computed(() => [
 const sentence = computed(() => {
   if (mode.value !== "custom")
     return OPTIONS.find((o) => o.value === mode.value)!.text
-  const [results, hints] = values.value
-  return `Scores and answers are ${results!.value}, hints are ${hints!.value}, and ${
+  const [answers, results, hints] = values.value
+  return `Answers are ${answers!.value}. Scores and answers are ${results!.value}, hints are ${hints!.value}, and ${
     props.allowRetake
       ? "the quiz can be taken again"
       : "each browser gets one attempt"
@@ -155,7 +198,7 @@ const setMode = useAction(async (m: Choice) => {
     savedTimer = window.setTimeout(() => (saved.value = false), 2000)
     refreshQuizzes()
     emit("changed")
-    // Practice after Graded releases held results: whoever left an email is told now.
+    // Practice or Test after Graded releases held results: whoever left an email is told now.
     if (reply.told) toast(toldText(reply.told))
   } catch (e) {
     picked.value = null
@@ -201,10 +244,10 @@ const tabStop = (o: Choice) =>
         answer from.
       </p>
 
-      <!-- The Practice or Graded choice: the control on the Sharing page, the state on the overview. -->
+      <!-- Practice, Test or Graded: the control on the Sharing page, the state on the overview. -->
       <div v-if="large" class="mode">
         <div class="mode-head">
-          <strong id="mode-label">Practice or graded</strong>
+          <strong id="mode-label">Practice, test or graded</strong>
           <span v-if="saved" class="saved" aria-hidden="true"
             ><Icon name="check" :size="16" /> Saved</span
           >
@@ -386,7 +429,7 @@ const tabStop = (o: Choice) =>
   align-self: center;
 }
 
-/* ---- practice or graded ---- */
+/* ---- practice, test or graded ---- */
 
 /* The overview's panel: the state in one line, with the way to change it.
    The link's padding reaches 44 px without moving the line: an inline box's

@@ -65,6 +65,7 @@ const { data, error, loading, refresh } = useFetch<FullQuiz>(
           :questions="data.questions.length"
           :show-results="data.quiz.showResults"
           :show-hints="data.quiz.showHints"
+          :feedback="data.quiz.feedback"
           :allow-retake="data.quiz.allowRetake"
           :archived="data.quiz.archived"
           large

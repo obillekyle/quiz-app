@@ -8,10 +8,13 @@ import LogoMark from "../components/LogoMark.vue"
 import TakeItem from "../components/TakeItem.vue"
 import { ApiError } from "../composables/api"
 import {
+  DARK_BG,
   DARK_SURFACE,
   inkFor,
+  LIGHT_BG,
   LIGHT_SURFACE,
-  readableOn,
+  mix,
+  readableOnAll,
 } from "../composables/color"
 import { isDark } from "../composables/theme"
 import {
@@ -27,6 +30,7 @@ import {
   takeApi,
   wasDone,
   type Attempt,
+  type Draft,
   type Given,
   type Held,
   type PublicQuiz,
@@ -35,8 +39,15 @@ import {
 /*
  * A shared quiz, answered with a name and no account: the respondent's side
  * of QuizApp, in the design's purple (Figma, the five phone screens of
- * `123120.png`). Intro, then the name, then one question at a time with
- * feedback after each, then the score, a rating and a review.
+ * `123120.png`). Intro, then the name, then one question at a time, then
+ * the score, a rating and a review.
+ *
+ * A tap or a typed word is a pick, and a pick sends nothing: the button
+ * under the question confirms it. On a quiz checked as it goes, Check grades
+ * the pick, shows the feedback and locks the answer. On a quiz checked at
+ * the end, Next saves the pick and shows nothing; Back and Skip move
+ * around, a saved answer can be changed, and a list of the questions comes
+ * before Finish, which is where the answers are checked and shown.
  *
  * The attempt's id and token stay in this browser (localStorage), so a
  * refresh or a closed tab picks up at the first unanswered question.
@@ -72,11 +83,24 @@ addIcon("take:mail-read", {
   height: 24,
 })
 
+addIcon("take:swap", {
+  body: '<path fill="currentColor" d="m6.85 19l.85.85q.3.3.288.7t-.288.7q-.3.3-.712.313t-.713-.288L3.7 18.7q-.3-.3-.3-.7t.3-.7l2.575-2.575q.3-.3.713-.287t.712.312q.275.3.288.7t-.288.7l-.85.85H19q.425 0 .713.288T20 18t-.288.713T19 19zm10.3-12H5q-.425 0-.712-.288T4 6t.288-.712T5 5h12.15l-.85-.85q-.3-.3-.288-.7t.288-.7q.3-.3.713-.312t.712.287L20.3 5.3q.3.3.3.7t-.3.7l-2.575 2.575q-.3.3-.712.288T16.3 9.25q-.275-.3-.288-.7t.288-.7z"/>',
+  width: 24,
+  height: 24,
+})
+
 const route = useRoute()
 const code = String(route.params.code)
 
 type Stage =
-  "loading" | "missing" | "intro" | "question" | "done" | "review" | "taken"
+  | "loading"
+  | "missing"
+  | "intro"
+  | "question"
+  | "summary"
+  | "done"
+  | "review"
+  | "taken"
 const stage = ref<Stage>("loading")
 const loadError = ref("")
 const quiz = ref<PublicQuiz>()
@@ -86,14 +110,28 @@ const state = ref<Attempt | null>(null)
 const info = computed(() => quiz.value?.quiz)
 // The quiz's own color as the page's accent, set on the frame as the student
 // tokens so every button, ring, bar and word in the accent below follows.
-// The color is first moved to read as text on the theme's surface (the
-// palette's orange is 3.1:1 on white as it is; the dark tokens lighten every
-// accent the same way), and the ink on it is picked from the color shown.
+// A fill (the intro's disc, a filled button, the progress bar) wears the
+// color as it was picked, the one the quiz's card and the sidebar wear, with
+// the ink that reads on it. Where the accent is itself the text or an icon,
+// it takes a second tone that reads on everything it is drawn on: the
+// surface, the page behind it and the color's own strongest tint (16%, the
+// quiz maker's initial). The palette's orange as a fill is #ef6c00 under the
+// dark ink, 5.65:1; as text it is #ae4e00, 5.4:1 on white and 4.5:1 on its
+// tint.
 const tint = computed(() => {
   const c = info.value?.color
   if (!c) return undefined
-  const shown = readableOn(c, isDark.value ? DARK_SURFACE : LIGHT_SURFACE)
-  return { "--student": shown, "--student-ink": inkFor(shown) }
+  const surface = isDark.value ? DARK_SURFACE : LIGHT_SURFACE
+  const grounds = [
+    surface,
+    isDark.value ? DARK_BG : LIGHT_BG,
+    mix(surface, c, 0.16),
+  ]
+  return {
+    "--student": c,
+    "--student-ink": inkFor(c),
+    "--accent-text": readableOnAll(c, grounds),
+  }
 })
 const timeMode = computed(() => info.value?.timeMode ?? "none")
 const limitMs = computed(() => (info.value?.timeLimit ?? 0) * 1000)
@@ -101,6 +139,10 @@ const allowRetake = computed(() => info.value?.allowRetake ?? true)
 const showHints = computed(() => info.value?.showHints ?? true)
 const aiCheck = computed(() => info.value?.aiCheck ?? true)
 const aiEssay = computed(() => info.value?.aiEssay ?? true)
+/** Checked at the end: answers save without a verdict and can change until Finish. */
+const atEnd = computed(() => info.value?.feedback === "end")
+/** Per question, a passed question stays passed: no way back, and no list to jump from. */
+const canGoBack = computed(() => timeMode.value !== "question")
 
 /** The questions in the order this attempt shows them; the quiz's own order before one starts. */
 const questions = computed(() => {
@@ -203,6 +245,18 @@ const facts = computed<Fact[]>(() => {
     out.push({
       icon: "take:timer",
       text: `The whole quiz has ${duration(i.timeLimit)}, from the moment it starts. At zero it finishes on its own.`,
+    })
+  if (i.feedback === "end" && i.timeMode !== "question")
+    out.push({
+      icon: "take:swap",
+      text: i.showResults
+        ? "You can change your answers until you finish the quiz. The score and the answers show at the end."
+        : "You can change your answers until you finish the quiz.",
+    })
+  else if (i.feedback === "end" && i.showResults)
+    out.push({
+      icon: "take:swap",
+      text: "The score and the answers show when you finish the quiz.",
     })
   if (!i.allowRetake)
     out.push({
@@ -324,6 +378,8 @@ function startOver() {
   expired.value = false
   timedOut.value = false
   lapsed.value = null
+  drafts.value = {}
+  returning.value = false
   stage.value = "intro"
   begin()
 }
@@ -359,37 +415,111 @@ function enter(i: number, startedAt?: number) {
     savePace(code, { attempt: held.value.attempt, q: q.id, at: qStart.value })
 }
 
-async function answer(given: { choice?: number; text?: string }) {
+// ---- the pick: chosen or typed, and sent only by the button -------------------------
+/** Picks not sent yet, by question id. */
+const drafts = ref<Record<number, Draft>>({})
+const draft = computed(() =>
+  current.value ? drafts.value[current.value.id] : undefined,
+)
+function setDraft(d: Draft) {
   const q = current.value
-  if (!q || !held.value || !state.value || busy.value) return
+  if (!q || busy.value || locked.value) return
+  drafts.value[q.id] = d
+  answerError.value = ""
+}
+const filled = (d: Draft | undefined) =>
+  !!d && (d.choice != null || !!d.text?.trim())
+const given = computed(() =>
+  current.value ? byQ.value[current.value.id] : undefined,
+)
+/** The saved answer of the question on screen, when it can still change. */
+const savedPick = computed(() => (given.value?.pick ? given.value : undefined))
+/** The question on screen is settled: checked, or its answer kept while the results are held. */
+const locked = computed(() => !!given.value && !given.value.pick)
+/** The pick on screen is something to send: it is not empty and not what is saved. */
+const unsent = computed(() => {
+  const d = draft.value
+  if (!d || !filled(d) || locked.value) return false
+  const was = savedPick.value
+  return (
+    !was ||
+    (d.choice ?? null) !== was.choice ||
+    (d.text ?? "") !== (was.text ?? "")
+  )
+})
+/** There is a pick: the one on screen, or the saved one behind it. */
+const hasPick = computed(() =>
+  draft.value ? filled(draft.value) : !!savedPick.value,
+)
+
+/**
+ * Sends the pick on screen when it differs from what is saved. True when
+ * there was nothing to send or it was saved; false when the send failed.
+ */
+async function commit() {
+  const q = current.value
+  if (!q || !held.value || !state.value) return false
+  if (!unsent.value) return true
+  if (busy.value) return false
   busy.value = true
   answerError.value = ""
   // An answer sent in time counts, however long the grading takes.
   if (timeMode.value === "question") qStop.value = Date.now()
   try {
-    const f = await takeApi.answer(held.value, q.id, given)
+    const f = await takeApi.answer(held.value, q.id, drafts.value[q.id]!)
     state.value.answers = [
       ...state.value.answers.filter((x) => x.questionId !== q.id),
       f,
     ]
+    delete drafts.value[q.id]
     lapsed.value = null
+    return true
   } catch (e) {
     qStop.value = null
     if (e instanceof ApiError && e.field === "time") {
       // The server's clock says the time is up: this one finishes too.
       deadline.value = Date.now()
     } else answerError.value = e instanceof Error ? e.message : String(e)
+    return false
   } finally {
     busy.value = false
   }
 }
 
+/** The filled button: Check, then Next; on a quiz checked at the end, Next saves. */
+async function primary() {
+  if (!current.value || busy.value || finishing.value) return
+  if (!primaryReady.value) return
+  if (!atEnd.value && !locked.value) return void (await commit())
+  if (!(await commit())) return
+  await advance()
+}
+/**
+ * Skip leaves the question for now. On a quiz checked at the end, a pick it
+ * leaves behind is dropped, so what shows chosen later is what is saved; on
+ * a quiz checked as it goes the pick waits, unchecked, for the way back.
+ */
+function skip() {
+  const q = current.value
+  if (!q || busy.value || finishing.value) return
+  if (atEnd.value) delete drafts.value[q.id]
+  return advance()
+}
+/** Back saves a changed pick on a quiz checked at the end: only Skip leaves one behind. */
+async function back() {
+  if (at.value === 0 || busy.value || finishing.value) return
+  if (atEnd.value && !(await commit())) return
+  returning.value = false
+  enter(at.value - 1)
+}
+
 const confirm = ref<InstanceType<typeof ConfirmDialog>>()
-async function next() {
-  if (!isLast.value) {
-    lapsed.value = null
-    return enter(at.value + 1)
-  }
+/** On from the question on screen: the next one, the list before Finish, or Finish. */
+async function advance() {
+  lapsed.value = null
+  if (returning.value) return openSummary()
+  if (!isLast.value) return enter(at.value + 1)
+  if (atEnd.value && canGoBack.value) return openSummary()
   const open = questions.value.length - answered.value
   if (open > 0) {
     const ok = await confirm.value?.ask({
@@ -402,6 +532,22 @@ async function next() {
   await finish()
 }
 
+// ---- before Finish, on a quiz checked at the end: every question, answered or not ----
+/** A row of the list was opened: its question's Next and Skip come back to the list. */
+const returning = ref(false)
+const unanswered = computed(() => questions.value.length - answered.value)
+function openSummary() {
+  returning.value = false
+  answerError.value = ""
+  stage.value = "summary"
+  window.scrollTo({ top: 0 })
+}
+function jump(i: number) {
+  returning.value = true
+  enter(i)
+  stage.value = "question"
+}
+
 /** Ends the attempt; `auto` when a clock ran out, which happens once. */
 async function finish(auto = false) {
   if (!held.value || finishing.value) return
@@ -412,6 +558,8 @@ async function finish(auto = false) {
   finishing.value = true
   answerError.value = ""
   try {
+    // A clock at zero takes the pick on screen with it: it was made in time.
+    if (auto && stage.value === "question") await commit()
     await takeApi.finish(held.value)
     endVisit(code)
     markDone(code)
@@ -459,6 +607,7 @@ const ticking = computed(
   () =>
     timeMode.value !== "none" &&
     (stage.value === "question" ||
+      stage.value === "summary" ||
       (stage.value === "intro" && resumable.value)),
 )
 let tick: ReturnType<typeof setInterval> | undefined
@@ -497,7 +646,9 @@ const lastMinute = computed(
 // the exact time when a clock first shows ("1 minute 10 seconds left.") and
 // whole minutes after that ("1 minute left.").
 const minuteMark = computed(() =>
-  stage.value === "question" && left.value != null && left.value > 0
+  (stage.value === "question" || stage.value === "summary") &&
+  left.value != null &&
+  left.value > 0
     ? Math.ceil(left.value / 60_000)
     : 0,
 )
@@ -508,22 +659,52 @@ watch(minuteMark, (m) => {
 })
 
 // At zero: overall, the attempt finishes; per question, the next one comes
-// up unanswered (the last one finishes). An answer still out is waited for.
-watch([left, busy, finishing], () => {
-  if (left.value !== 0 || busy.value || finishing.value) return
-  if (stage.value !== "question") return
+// up (the last one finishes). A pick on screen at zero is sent first: on a
+// quiz checked as it goes its feedback then shows and Next moves on; on one
+// checked at the end it is saved and the next question comes up. An answer
+// still out is waited for.
+let lapsing = false
+watch([left, busy, finishing], async () => {
+  if (left.value !== 0 || busy.value || finishing.value || lapsing) return
+  if (stage.value !== "question" && stage.value !== "summary") return
   if (timeMode.value === "overall") return void finish(true)
+  if (stage.value !== "question") return
   const q = current.value
-  if (!q || byQ.value[q.id]) return
-  if (isLast.value) return void finish(true)
-  const n = at.value + 1
-  enter(at.value + 1)
-  lapsed.value = n
+  if (!q || locked.value) return
+  lapsing = true
+  try {
+    const sent = unsent.value && (await commit())
+    if (sent && !atEnd.value) return
+    if (isLast.value) return void finish(true)
+    const n = at.value + 1
+    enter(at.value + 1)
+    lapsed.value = sent ? null : n
+  } finally {
+    lapsing = false
+  }
 })
+
+// ---- the footer's filled button ------------------------------------------------------
+/** A confirmed answer comes back kept, not checked: results held, or an essay the quiz maker scores. */
+const savesOnly = computed(
+  () =>
+    atEnd.value ||
+    !!state.value?.held ||
+    (current.value?.kind === "essay" && !aiEssay.value),
+)
+const primaryLabel = computed(() => {
+  if (finishing.value) return "Finishing…"
+  if (busy.value) return savesOnly.value ? "Saving…" : "Checking…"
+  if (atEnd.value) return isLast.value && !canGoBack.value ? "Finish" : "Next"
+  if (locked.value) return isLast.value ? "Finish" : "Next"
+  return savesOnly.value ? "Submit" : "Check"
+})
+/** Filled once there is something for it to do: a pick to confirm, or an answer to move on from. */
+const primaryReady = computed(() => locked.value || hasPick.value)
 
 // ---- the score ----------------------------------------------------------------------
 const graded = computed(() =>
-  (state.value?.answers ?? []).flatMap((f) => (f.held ? [] : [f])),
+  (state.value?.answers ?? []).flatMap((f) => (f.held || f.pick ? [] : [f])),
 )
 const score = computed(() => state.value?.score ?? 0)
 
@@ -736,8 +917,16 @@ const initial = (name: string) => (name.trim()[0] ?? "?").toUpperCase()
         </button>
       </header>
 
-      <div v-if="stage === 'question' && current" class="progress">
+      <div
+        v-if="
+          (stage === 'question' && current) ||
+          (stage === 'summary' && left != null)
+        "
+        class="progress"
+        :data-bare="stage === 'summary' || undefined"
+      >
         <div
+          v-if="stage === 'question'"
           class="track"
           role="progressbar"
           aria-valuemin="1"
@@ -750,7 +939,9 @@ const initial = (name: string) => (name.trim()[0] ?? "?").toUpperCase()
             :style="{ width: `${((at + 1) / questions.length) * 100}%` }"
           />
         </div>
-        <span>{{ at + 1 }} / {{ questions.length }}</span>
+        <span v-if="stage === 'question'"
+          >{{ at + 1 }} / {{ questions.length }}</span
+        >
         <span
           v-if="left != null"
           class="clock"
@@ -889,15 +1080,41 @@ const initial = (name: string) => (name.trim()[0] ?? "?").toUpperCase()
               :question="current"
               :number="at + 1"
               :feedback="byQ[current.id]"
+              :draft="draft"
               :busy="busy"
               :options="optionsOf(current.id)"
-              :held="state?.held"
               :show-hints="showHints"
               :ai-check="aiCheck"
               :ai-essay="aiEssay"
-              @answer="answer"
+              @pick="setDraft"
+              @confirm="primary"
             />
           </Transition>
+          <p v-if="answerError" class="error" role="alert">{{ answerError }}</p>
+        </template>
+
+        <!-- Before Finish, on a quiz checked at the end: every question,
+             answered or not, each row the way back to it. -->
+        <template v-else-if="stage === 'summary' && state">
+          <section class="card sum-head">
+            <h1>Your answers</h1>
+            <p class="muted">
+              Open a question to answer it or to change its answer. Nothing can
+              be changed after you finish.
+            </p>
+          </section>
+          <ol class="sum" stack>
+            <li v-for="(q, i) in questions" :key="q.id">
+              <button type="button" class="row sum-row" @click="jump(i)">
+                <span class="sum-n">{{ i + 1 }}.</span>
+                <span class="sum-prompt">{{ q.prompt }}</span>
+                <span class="sum-state" :data-open="!byQ[q.id] || undefined">
+                  <Icon v-if="byQ[q.id]" name="check" :size="16" />
+                  {{ byQ[q.id] ? "Answered" : "Not answered" }}
+                </span>
+              </button>
+            </li>
+          </ol>
           <p v-if="answerError" class="error" role="alert">{{ answerError }}</p>
         </template>
 
@@ -1088,7 +1305,7 @@ const initial = (name: string) => (name.trim()[0] ?? "?").toUpperCase()
                 :number="i + 1"
                 :feedback="byQ[q.id]"
                 :options="optionsOf(q.id)"
-                :held="state.held"
+                review
                 :ai-check="aiCheck"
                 :ai-essay="aiEssay"
               />
@@ -1117,34 +1334,68 @@ const initial = (name: string) => (name.trim()[0] ?? "?").toUpperCase()
       <footer v-else-if="stage === 'question' && current" class="foot two">
         <!-- Per question, a passed question stays passed: no way back. -->
         <button
-          v-if="timeMode !== 'question'"
+          v-if="canGoBack"
           type="button"
           btn
           class="outline"
-          :disabled="at === 0 || busy"
-          @click="go(at - 1)"
+          :disabled="at === 0 || busy || finishing"
+          @click="back"
         >
           Back
         </button>
-        <!-- Filled once the question is answered: before that the answer is
-             the main action, and passing the question is the quiet one. -->
+        <!-- The quiet way on, while the question is open: leave it for now. -->
         <button
+          v-if="!locked"
           type="button"
-          :btn="byQ[current.id] ? 'primary' : 'quiet'"
+          btn="quiet"
           class="pass"
           :disabled="busy || finishing"
-          @click="next"
+          @click="skip"
         >
-          {{
-            isLast
-              ? finishing
-                ? "Finishing…"
-                : "Finish"
-              : byQ[current.id]
-                ? "Next"
-                : "Skip"
-          }}
+          Skip
         </button>
+        <!-- Filled once it has something to do: a pick to confirm (Check, or
+             Next on a quiz checked at the end), then the way on. -->
+        <button
+          type="button"
+          :btn="primaryReady ? 'primary' : ''"
+          class="go"
+          :disabled="busy || finishing || !primaryReady"
+          @click="primary"
+        >
+          {{ primaryLabel }}
+        </button>
+      </footer>
+      <footer v-else-if="stage === 'summary'" class="foot">
+        <p class="tally" role="status">
+          {{
+            unanswered
+              ? `${unanswered} of ${questions.length} unanswered.`
+              : questions.length === 1
+                ? "The question is answered."
+                : `All ${questions.length} questions are answered.`
+          }}
+        </p>
+        <div class="pair">
+          <button
+            type="button"
+            btn
+            class="outline"
+            :disabled="finishing"
+            @click="stage = 'question'"
+          >
+            Back
+          </button>
+          <button
+            type="button"
+            btn="primary"
+            class="go"
+            :disabled="finishing"
+            @click="finish()"
+          >
+            {{ finishing ? "Finishing…" : "Finish" }}
+          </button>
+        </div>
       </footer>
       <!-- The design's name prompt, on the browser's own <dialog>. -->
       <dialog ref="nameDialog" class="name-dialog" @close="startError = ''">
@@ -1274,6 +1525,10 @@ const initial = (name: string) => (name.trim()[0] ?? "?").toUpperCase()
 .frame {
   --accent: var(--student);
   --accent-ink: var(--student-ink);
+  /* The accent where it is the text, an icon or a line rather than a fill.
+     The student purple reads as both; a quiz's own color sets a tone of its
+     own here (see `tint`). */
+  --accent-text: var(--student);
   display: flex;
   flex-direction: column;
   width: min(100%, 600px);
@@ -1295,7 +1550,14 @@ const initial = (name: string) => (name.trim()[0] ?? "?").toUpperCase()
 }
 .brand {
   display: grid;
-  color: var(--accent);
+  color: var(--accent-text);
+}
+/* Focus rings are lines on the page: the tone that reads there, not the fill's. */
+.frame [btn]:focus-visible {
+  outline-color: var(--accent-text);
+}
+.frame [field]:focus {
+  outline-color: var(--accent-text);
 }
 .flag {
   display: grid;
@@ -1316,7 +1578,7 @@ const initial = (name: string) => (name.trim()[0] ?? "?").toUpperCase()
     background: var(--hover);
   }
   &:focus-visible {
-    outline: 2px solid var(--accent);
+    outline: 2px solid var(--accent-text);
   }
   &[data-reported] {
     color: var(--bad);
@@ -1462,7 +1724,7 @@ const initial = (name: string) => (name.trim()[0] ?? "?").toUpperCase()
   padding: 3px 10px;
   border-radius: var(--radius-full);
   background: color-mix(in srgb, var(--accent) 10%, var(--surface));
-  color: var(--accent);
+  color: var(--accent-text);
   font-weight: 650;
   transition:
     background var(--fast) var(--ease),
@@ -1548,7 +1810,7 @@ const initial = (name: string) => (name.trim()[0] ?? "?").toUpperCase()
    a soft tint rather than the solid accent, so a colored glyph reads. */
 .mark.own {
   background: color-mix(in srgb, var(--accent) 12%, var(--surface));
-  color: var(--accent);
+  color: var(--accent-text);
 }
 /* A cover runs edge to edge across the top of the intro card. */
 .intro {
@@ -1594,7 +1856,7 @@ const initial = (name: string) => (name.trim()[0] ?? "?").toUpperCase()
   svg {
     flex: none;
     margin-top: 2px;
-    color: var(--accent);
+    color: var(--accent-text);
   }
 }
 .center .muted {
@@ -1686,7 +1948,7 @@ const initial = (name: string) => (name.trim()[0] ?? "?").toUpperCase()
   border-radius: 50%;
   /* Purple for every maker: red and orange mean a wrong answer and a report here. */
   background: color-mix(in srgb, var(--accent) 16%, var(--surface));
-  color: var(--accent);
+  color: var(--accent-text);
   font-weight: 650;
 }
 .who {
@@ -1709,7 +1971,7 @@ const initial = (name: string) => (name.trim()[0] ?? "?").toUpperCase()
   svg {
     flex: none;
     margin-top: 2px;
-    color: var(--accent);
+    color: var(--accent-text);
   }
 }
 
@@ -1733,9 +1995,32 @@ const initial = (name: string) => (name.trim()[0] ?? "?").toUpperCase()
     width: 100%;
     border-radius: var(--radius-full);
   }
-  &.two {
+  &.two,
+  .pair {
+    display: flex;
     flex-direction: row;
+    gap: 8px;
   }
+  /* Back and Skip keep their own width; the filled button takes the rest,
+     so it stays the widest thing in reach of the thumb. */
+  .outline,
+  .pass {
+    flex: none;
+    width: auto;
+    min-width: 88px;
+  }
+  .go {
+    flex: 1;
+    width: auto;
+    min-width: 0;
+  }
+}
+/* What is left open, said above the button that ends the attempt. */
+.tally {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 650;
+  text-align: center;
 }
 .fine {
   margin: 2px 0 0;
@@ -1745,9 +2030,9 @@ const initial = (name: string) => (name.trim()[0] ?? "?").toUpperCase()
   color: var(--muted);
 }
 .outline {
-  border-color: var(--accent);
+  border-color: var(--accent-text);
   background: transparent;
-  color: var(--accent);
+  color: var(--accent-text);
 
   /* Disabled (the first question's Back): outline and text at 38% of the
      ink, Material's disabled level, in place of the global 60% opacity
@@ -1760,7 +2045,64 @@ const initial = (name: string) => (name.trim()[0] ?? "?").toUpperCase()
 }
 /* Skip, as Material's text button: the accent on nothing. */
 .pass[btn="quiet"] {
-  color: var(--accent);
+  color: var(--accent-text);
+}
+/* The filled button before it has anything to do: an outline at Material's
+   disabled level, in place of the global 60% opacity over a white fill. */
+.go:not([btn="primary"]):disabled {
+  border-color: color-mix(in srgb, var(--ink) 12%, transparent);
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+  color: color-mix(in srgb, var(--ink) 38%, transparent);
+  opacity: 1;
+}
+
+/* ---- the list before Finish ---- */
+.sum-head {
+  h1 {
+    margin: 0 0 4px;
+    font-size: 22px;
+    line-height: 1.25;
+  }
+}
+.sum-row {
+  width: 100%;
+  gap: 8px;
+  padding: 10px 16px;
+}
+.sum-n {
+  flex: none;
+  min-width: 1.6em;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+/* Two lines of the question are enough to know it by; the rest is a tap away. */
+.sum-prompt {
+  display: -webkit-box;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  font-size: 15px;
+  line-height: 1.35;
+}
+.sum-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  font-size: 13px;
+  color: var(--muted);
+
+  &[data-open] {
+    font-weight: 650;
+    color: var(--ink);
+  }
+}
+/* On the list the row of the clock stands alone, at the end of its line. */
+.progress[data-bare] {
+  justify-content: flex-end;
 }
 
 /* ---- the score ---- */
@@ -1824,11 +2166,11 @@ const initial = (name: string) => (name.trim()[0] ?? "?").toUpperCase()
     color: var(--ink);
   }
   &:focus-visible {
-    outline: 2px solid var(--accent);
+    outline: 2px solid var(--accent-text);
   }
   &[aria-pressed="true"] {
     background: color-mix(in srgb, var(--accent) 14%, var(--surface));
-    color: var(--accent);
+    color: var(--accent-text);
   }
 }
 /* The faces follow the score, left to right: the question comes after the result. */
@@ -1861,7 +2203,7 @@ const initial = (name: string) => (name.trim()[0] ?? "?").toUpperCase()
     background: var(--hover);
   }
   &:focus-visible {
-    outline: 2px solid var(--accent);
+    outline: 2px solid var(--accent-text);
   }
 }
 .share-note {

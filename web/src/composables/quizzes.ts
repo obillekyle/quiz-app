@@ -23,6 +23,11 @@ export type QuizSettings = {
   showResults: boolean
   /** The "Show hint" control on each question, naming the topic and page. */
   showHints: boolean
+  /**
+   * When an answer is checked: "each" as the respondent confirms it, locked
+   * from then on; "end" when the quiz is finished, changeable until then.
+   */
+  feedback: "each" | "end"
   resultsReleasedAt: number | null
   /** Identification answers checked by the AI beyond an exact match. */
   aiCheck: boolean

@@ -2,15 +2,24 @@
 import { computed, ref, watch } from "vue"
 import Icon from "./Icon.vue"
 import { KIND_LABEL } from "../composables/quizzes"
-import type { Feedback, Given, PublicQuestion } from "../composables/take"
+import type {
+  Draft,
+  Feedback,
+  Given,
+  PublicQuestion,
+} from "../composables/take"
 
 /**
  * One question on the respondent's side, from the QuizApp design: the prompt
- * in its own card, the options below. Before an answer it takes one (a tap
- * on an option, or typed text) and offers a hint naming where in the
- * material to look. After, it shows the feedback: the right option green,
- * a wrong pick red, why each option is right or wrong, and the sentence in
- * the material the answer comes from.
+ * in its own card, the options below. Until it is checked it takes a pick
+ * (an option chosen, or typed text) and offers a hint naming where in the
+ * material to look. Nothing is sent from here: the pick goes up to the page,
+ * whose button confirms it. Once checked, it shows the feedback: the right
+ * option green, a wrong pick red, why each option is right or wrong, and
+ * the sentence in the material the answer comes from.
+ *
+ * On a quiz checked at the end, a saved answer comes back as a pick: it
+ * shows chosen and stays open to change until the attempt is finished.
  *
  * While the quiz maker holds the results, an answer is only marked as given:
  * no right or wrong, no reasons. An essay the quiz maker scores by hand
@@ -21,12 +30,14 @@ const props = withDefaults(
     question: PublicQuestion
     number: number
     feedback?: Given
-    /** An answer is being graded. */
+    /** The pick not sent yet; without one, a saved pick shows. */
+    draft?: Draft
+    /** The pick is being sent. */
     busy?: boolean
     /** The original option indices in the order shown; the quiz's own order without it. */
     options?: number[]
-    /** The quiz maker holds the results back. */
-    held?: boolean
+    /** The finished attempt's review: nothing takes a pick. */
+    review?: boolean
     /** Off, the "Show hint" control is not offered (a graded quiz). */
     showHints?: boolean
     aiCheck?: boolean
@@ -35,15 +46,36 @@ const props = withDefaults(
   { showHints: true, aiCheck: true, aiEssay: true },
 )
 const emit = defineEmits<{
-  answer: [given: { choice?: number; text?: string }]
+  /** The pick changed: an option chosen, or the text as typed. */
+  pick: [draft: Draft]
+  /** Enter in the one-line field: the page's button, from the keyboard. */
+  confirm: []
 }>()
 
 const q = computed(() => props.question)
 const f = computed(() => props.feedback)
-/** The feedback, when the answer came back graded rather than held. */
+/** The feedback, when the answer came back graded rather than held or only saved. */
 const g = computed<Feedback | undefined>(() =>
-  f.value && !f.value.held ? f.value : undefined,
+  f.value && !f.value.held && !f.value.pick ? f.value : undefined,
 )
+/** The question still takes a pick: not checked yet, or saved on a quiz checked at the end. */
+const open = computed(() => !props.review && (!f.value || !!f.value.pick))
+/** What shows as picked: the pick not sent yet, else the saved one. */
+const sel = computed<Draft>(() => {
+  if (props.draft) return props.draft
+  const fb = f.value
+  if (!fb?.pick) return {}
+  return { choice: fb.choice ?? undefined, text: fb.text ?? undefined }
+})
+/** The saved pick is the one on screen: nothing waits to be sent. */
+const savedPick = computed(() => {
+  const fb = f.value
+  if (!fb?.pick) return false
+  return (
+    (sel.value.choice ?? null) === fb.choice &&
+    (sel.value.text ?? "") === (fb.text ?? "")
+  )
+})
 const choices = computed(
   () => q.value.kind === "choice" || q.value.kind === "truefalse",
 )
@@ -55,26 +87,55 @@ const shown = computed(() => {
   return order.map((i) => ({ i, text: q.value.choices[i]! }))
 })
 
-const text = ref("")
-watch(
-  () => q.value.id,
-  () => (text.value = ""),
-)
-
 const LETTERS = "ABCDEF"
 function state(i: number) {
   const fb = f.value
+  if (open.value) return sel.value.choice === i ? "chosen" : undefined
   if (!fb) return undefined
-  if (fb.held) return i === fb.choice ? "picked" : undefined
+  if (fb.held || fb.pick) return i === fb.choice ? "picked" : undefined
   if (i === fb.answer) return "right"
   if (i === fb.choice) return "wrong"
 }
-function pick(i: number) {
-  if (!f.value && !props.busy) emit("answer", { choice: i })
+function choose(i: number) {
+  if (open.value && !props.busy) emit("pick", { choice: i })
 }
-function submit() {
-  if (text.value.trim() && !props.busy) emit("answer", { text: text.value })
+const typed = (e: Event) =>
+  emit("pick", {
+    text: (e.target as HTMLInputElement | HTMLTextAreaElement).value,
+  })
+
+/** The options are a radio group: the arrow keys move the pick, as they move a radio's. */
+function onKey(e: KeyboardEvent) {
+  if (!open.value || props.busy) return
+  const step =
+    e.key === "ArrowDown" || e.key === "ArrowRight"
+      ? 1
+      : e.key === "ArrowUp" || e.key === "ArrowLeft"
+        ? -1
+        : 0
+  if (!step) return
+  e.preventDefault()
+  const list = shown.value
+  const from = list.findIndex((c) => c.i === sel.value.choice)
+  const to =
+    from < 0
+      ? step > 0
+        ? 0
+        : list.length - 1
+      : (from + step + list.length) % list.length
+  emit("pick", { choice: list[to]!.i })
+  const group = e.currentTarget as HTMLElement
+  ;(group.querySelectorAll(".option")[to] as HTMLElement | undefined)?.focus()
 }
+/** Which option the Tab key lands on: the picked one, or the first with no pick. */
+const tabStop = (i: number, at: number) =>
+  sel.value.choice == null
+    ? at === 0
+      ? 0
+      : -1
+    : sel.value.choice === i
+      ? 0
+      : -1
 
 const typedState = computed(() => {
   const fb = g.value
@@ -112,11 +173,13 @@ const points = (n: number) => `${n} ${n === 1 ? "point" : "points"}`
 /**
  * The feedback arrived while this question was on screen, as against a
  * question mounted already graded (the review, or Back to an answered one).
- * Only the first case is a reveal, and only a reveal animates.
+ * Only the first case is a reveal, and only a reveal animates. A pick saved
+ * on a quiz checked at the end reveals nothing.
  */
 const reveal = ref(false)
+const judged = (x: Given | undefined) => !!x && !x.pick
 watch(f, (now, before) => {
-  if (now && !before) reveal.value = true
+  if (judged(now) && !judged(before)) reveal.value = true
 })
 watch(
   () => q.value.id,
@@ -133,7 +196,7 @@ watch(
     <div class="ask">
       <p class="meta">
         <span>{{ KIND_LABEL[q.kind] }} · {{ points(q.points) }}</span>
-        <span v-if="f?.held" class="got">Answer saved</span>
+        <span v-if="f?.held || savedPick" class="got">Answer saved</span>
         <span v-else-if="g?.skipped" class="got">Not answered</span>
         <span v-else-if="g?.pending" class="got">Not scored yet</span>
         <span
@@ -167,21 +230,31 @@ watch(
       </figure>
     </div>
 
-    <!-- Multiple choice and true or false: a tap answers. -->
-    <ul v-if="choices" class="options" stack>
-      <li v-for="(c, at) in shown" :key="c.i" :style="{ '--i': at }">
+    <!-- Multiple choice and true or false: a tap picks, and picks again. -->
+    <ul
+      v-if="choices"
+      class="options"
+      stack
+      :role="open ? 'radiogroup' : undefined"
+      :aria-label="open ? 'Your answer' : undefined"
+      @keydown="onKey"
+    >
+      <li
+        v-for="(c, at) in shown"
+        :key="c.i"
+        :style="{ '--i': at }"
+        :role="open ? 'presentation' : undefined"
+      >
         <button
           type="button"
           class="option"
+          :role="open ? 'radio' : undefined"
+          :aria-checked="open ? sel.choice === c.i : undefined"
+          :tabindex="open ? tabStop(c.i, at) : undefined"
           :data-state="state(c.i)"
-          :data-picked="(f && c.i === f.choice) || undefined"
-          :disabled="!!f || busy"
-          :aria-label="
-            f
-              ? undefined
-              : `Answer ${q.kind === 'choice' ? LETTERS[at] + ': ' : ''}${c.text}`
-          "
-          @click="pick(c.i)"
+          :data-picked="(!open && f && c.i === f.choice) || undefined"
+          :disabled="!open || busy"
+          @click="choose(c.i)"
         >
           <b v-if="q.kind === 'choice'" class="letter">{{ LETTERS[at] }}.</b>
           <span class="body">
@@ -194,45 +267,39 @@ watch(
             </span>
             <small v-if="g && g.reasons[c.i]">{{ glue(g.reasons[c.i]) }}</small>
           </span>
+          <!-- A radio's ring on every option and its dot on the pick: a check
+               here would read as "correct" before anything is checked. -->
+          <span v-if="open" class="tick" aria-hidden="true" />
         </button>
       </li>
     </ul>
 
-    <!-- Identification and essay: typed, then checked. -->
+    <!-- Identification and essay: typed here, sent by the page's button. -->
     <div v-else class="typed">
-      <form v-if="!f" class="write" @submit.prevent="submit">
+      <form v-if="open" class="write" @submit.prevent="emit('confirm')">
         <label :for="`answer-${q.id}`" class="sr-only">Your answer</label>
         <input
           v-if="q.kind === 'identify'"
           :id="`answer-${q.id}`"
-          v-model="text"
+          :value="sel.text ?? ''"
           field
           autocomplete="off"
           placeholder="Your answer"
           maxlength="300"
           :disabled="busy"
+          @input="typed"
         />
         <textarea
           v-else
           :id="`answer-${q.id}`"
-          v-model="text"
+          :value="sel.text ?? ''"
           field
           rows="6"
           placeholder="Write your answer"
           maxlength="8000"
           :disabled="busy"
+          @input="typed"
         />
-        <button btn="primary" :disabled="busy || !text.trim()">
-          {{
-            busy
-              ? held || (q.kind === "essay" && !aiEssay)
-                ? "Saving…"
-                : "Checking…"
-              : q.kind === "essay" || held
-                ? "Submit answer"
-                : "Check answer"
-          }}
-        </button>
         <p class="note">
           <template v-if="q.kind === 'identify' && aiCheck">
             Capital letters, spacing and numbers written as words do not count
@@ -252,7 +319,7 @@ watch(
         </p>
       </form>
 
-      <template v-else>
+      <template v-else-if="f">
         <p class="given" :data-state="typedState">
           {{ f.skipped ? "Not answered" : f.text || "(empty)" }}
         </p>
@@ -281,7 +348,7 @@ watch(
 
     <!-- Before answering, where to look; after, why, and the sentence itself. -->
     <details
-      v-if="!f && hint && showHints"
+      v-if="open && hint && showHints"
       class="hint"
       :open="hintOpen"
       @toggle="hintOpen = ($event.target as HTMLDetailsElement).open"
@@ -382,10 +449,15 @@ watch(
   transition:
     background var(--fast) var(--ease),
     border-color var(--fast) var(--ease),
+    box-shadow var(--fast) var(--ease),
     scale 100ms var(--ease);
 
   &:hover:not(:disabled) {
-    border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+    border-color: color-mix(
+      in srgb,
+      var(--accent-text, var(--accent)) 45%,
+      transparent
+    );
     background: color-mix(in srgb, var(--accent) 5%, var(--surface));
   }
   /* Pressed: the tile gives under the finger, so the tap is seen to land. */
@@ -394,11 +466,20 @@ watch(
   }
   /* Inside the tile: the option group's `contain: content` clips anything outside. */
   &:focus-visible {
-    outline: 2px solid var(--accent);
+    outline: 2px solid var(--accent-text, var(--accent));
     outline-offset: -3px;
   }
   &:disabled {
     cursor: default;
+  }
+  /* The pick, before it is confirmed: a 2px outline in the accent as text
+     reads it, a tint, and the radio's dot at the end. Picking again moves
+     all three. */
+  &[data-state="chosen"],
+  &[data-state="chosen"]:hover:not(:disabled) {
+    border-color: var(--accent-text, var(--accent));
+    background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+    box-shadow: inset 0 0 0 1px var(--accent-text, var(--accent));
   }
   &[data-state="right"] {
     background: var(--good-soft);
@@ -412,12 +493,44 @@ watch(
   }
   /* Held results: the pick is marked, in the accent, and nothing is judged. */
   &[data-state="picked"] {
-    border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+    border-color: color-mix(
+      in srgb,
+      var(--accent-text, var(--accent)) 45%,
+      transparent
+    );
     background: color-mix(in srgb, var(--accent) 10%, var(--surface));
   }
 }
 [data-state="picked"] em {
-  color: var(--accent);
+  color: var(--accent-text, var(--accent));
+}
+/* The group clips to its own rounded box. The first and the last tile take
+   its corners, so a pick's outline runs round them rather than being cut. */
+.options > li:first-child .option {
+  border-top-left-radius: var(--radius-2xl);
+  border-top-right-radius: var(--radius-2xl);
+}
+.options > li:last-child .option {
+  border-bottom-left-radius: var(--radius-2xl);
+  border-bottom-right-radius: var(--radius-2xl);
+}
+.tick {
+  flex: none;
+  align-self: center;
+  width: 20px;
+  height: 20px;
+  margin-left: auto;
+  border: 2px solid color-mix(in srgb, var(--ink) 45%, transparent);
+  border-radius: 50%;
+  transition: border-color var(--fast) var(--ease);
+}
+[data-state="chosen"] .tick {
+  border-color: var(--accent-text, var(--accent));
+  background: radial-gradient(
+    circle,
+    var(--accent-text, var(--accent)) 0 5px,
+    transparent 5.5px
+  );
 }
 .letter {
   flex: none;
@@ -426,6 +539,8 @@ watch(
 .body {
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-width: 0;
   gap: 2px;
 
   em {
@@ -467,9 +582,6 @@ watch(
     padding: 10px 12px;
     resize: vertical;
     line-height: 1.5;
-  }
-  button {
-    align-self: flex-start;
   }
 }
 .given {
@@ -522,7 +634,7 @@ watch(
     min-height: 44px;
     padding: 0;
     font-weight: 650;
-    color: var(--accent);
+    color: var(--accent-text, var(--accent));
     cursor: pointer;
     list-style: none;
 
