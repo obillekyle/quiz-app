@@ -48,6 +48,8 @@ export type PublicQuiz = {
     allowRetake: boolean
     /** False while the quiz maker holds the score and the answers back. */
     showResults: boolean
+    /** False when the quiz maker turned the hints off: no "Show hint" on a question. */
+    showHints: boolean
     aiCheck: boolean
     aiEssay: boolean
   }
@@ -100,6 +102,8 @@ export type Layout = { order: number[]; options: Record<string, number[]> }
 export type Attempt = Layout & {
   status: "open" | "finished"
   name: string
+  /** The section typed under the name ("7 Sampaguita"), if any. */
+  section: string | null
   /** True while the quiz maker holds the results: no score, no feedback. */
   held: boolean
   score: number | null
@@ -202,10 +206,11 @@ export const endVisit = (code: string) => write(visitKey(code), null)
 export const takeApi = {
   quiz: (code: string, count: boolean) =>
     api<PublicQuiz>(`/q/${encodeURIComponent(code)}${count ? "" : "?seen=1"}`),
-  start: (code: string, name: string, view: boolean) =>
+  /** `section` is optional on the page; an empty one is sent and stored as none. */
+  start: (code: string, name: string, section: string, view: boolean) =>
     api<Held & Layout & { timeLeft: number | null }>(
       `/q/${encodeURIComponent(code)}/attempts`,
-      { body: { name, view } },
+      { body: { name, section, view } },
     ),
   state: (h: Held) =>
     api<Attempt>(`/attempts/${h.attempt}`, {

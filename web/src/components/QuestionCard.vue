@@ -240,7 +240,7 @@ function addAccepted() {
       <span class="num">{{ index + 1 }}</span>
       <select
         :value="q.kind"
-        aria-label="Kind of question"
+        aria-label="Type of question"
         @change="setKind(($event.target as HTMLSelectElement).value as Kind)"
       >
         <option v-for="k in KINDS" :key="k" :value="k">

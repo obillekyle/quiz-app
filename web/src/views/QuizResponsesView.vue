@@ -15,6 +15,8 @@ import { edited, type FullQuiz } from "../composables/quizzes"
 type Row = {
   id: number
   name: string
+  /** The section typed under the name ("7 Sampaguita"), if any. */
+  section: string | null
   status: "open" | "finished"
   score: number
   total: number
@@ -42,6 +44,14 @@ const pending = computed(() =>
 const essays = (n: number) => `${n} ${n === 1 ? "essay" : "essays"} to score`
 const find = ref("")
 
+// ---- one section, or all: the select lists the sections present ------------------
+const section = ref("")
+const sections = computed(() =>
+  [...new Set(all.value.flatMap((r) => (r.section ? [r.section] : [])))].sort(
+    (a, b) => a.localeCompare(b, undefined, { numeric: true }),
+  ),
+)
+
 // ---- the order: newest, by name, or by score either way ---------------------------
 type Sort = "newest" | "name" | "high" | "low"
 const sort = ref<Sort>("newest")
@@ -56,10 +66,18 @@ const ORDER: Record<Sort, (a: Row, b: Row) => number> = {
 }
 const rows = computed(() => {
   const q = find.value.trim().toLowerCase()
-  const found = q
-    ? all.value.filter((r) => r.name.toLowerCase().includes(q))
-    : all.value
+  const s = section.value
+  const found = all.value.filter(
+    (r) => (!s || r.section === s) && (!q || r.name.toLowerCase().includes(q)),
+  )
   return [...found].sort(ORDER[sort.value])
+})
+/** When the search and the section leave nothing: both named, or just the name. */
+const nothing = computed(() => {
+  const named = `named “${find.value.trim()}”`
+  return section.value
+    ? `No respondent in ${section.value} is ${named}.`
+    : `No respondent is ${named}.`
 })
 
 const csvHref = computed(() => `/api/quizzes/${id.value}/responses.csv`)
@@ -124,6 +142,15 @@ const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
             <option value="high">Score high to low</option>
             <option value="low">Score low to high</option>
           </select>
+          <select
+            v-if="sections.length"
+            v-model="section"
+            class="sort"
+            aria-label="Show one section"
+          >
+            <option value="">All sections</option>
+            <option v-for="s in sections" :key="s" :value="s">{{ s }}</option>
+          </select>
           <label class="find">
             <Icon name="search" :size="18" />
             <input
@@ -146,9 +173,7 @@ const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
           >Share the quiz</RouterLink
         >
       </div>
-      <p v-else-if="!rows.length" class="state">
-        No respondent is named “{{ find.trim() }}”.
-      </p>
+      <p v-else-if="!rows.length" class="state">{{ nothing }}</p>
 
       <ul v-else class="rows" stack>
         <li v-for="r in rows" :key="r.id">
@@ -156,7 +181,10 @@ const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
             <span class="avatar" :style="{ background: avatarColor(r.name) }">{{
               initial(r.name)
             }}</span>
-            <span class="who">{{ r.name }}</span>
+            <span class="who">
+              <span class="name">{{ r.name }}</span>
+              <small v-if="r.section" class="section">{{ r.section }}</small>
+            </span>
             <span v-if="r.pending" class="todo">{{ essays(r.pending) }}</span>
             <template v-if="r.status === 'finished'">
               <span class="score" :data-low="low(r) || undefined"
@@ -303,12 +331,31 @@ const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
   color: white;
   font-weight: 650;
 }
+/* The name, and under it the section when one was given. The block holds
+   two lines' height either way, so a row without a section is as tall as
+   one with it and the list keeps one rhythm. */
 .who {
+  display: flex;
   flex: 1;
+  flex-direction: column;
+  justify-content: center;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  min-height: 40px;
+
+  .name,
+  .section {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .name {
+    line-height: 22px;
+  }
+  .section {
+    font-size: 13px;
+    line-height: 18px;
+    color: var(--muted);
+  }
 }
 /* Essays waiting for a score: the one thing on the row to act on. */
 .todo {
@@ -347,7 +394,10 @@ const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 }
 
 @media (max-width: 560px) {
+  /* The summary takes its own line; the controls take the whole next one
+     (`flex: 1` above would otherwise seat them beside it, in a column). */
   .tools {
+    flex: none;
     width: 100%;
   }
   .sort,

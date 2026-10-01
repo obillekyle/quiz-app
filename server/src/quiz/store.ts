@@ -77,6 +77,8 @@ export function settingsOf(q: any) {
     timeLimit: mode === 'none' || q.timeLimit == null ? null : Number(q.timeLimit),
     allowRetake: !!Number(q.allowRetake),
     showResults: !!Number(q.showResults),
+    // A row from before the column has no value; the column's default is on.
+    showHints: q.showHints == null ? true : !!Number(q.showHints),
     resultsReleasedAt: q.resultsReleasedAt == null ? null : Number(q.resultsReleasedAt),
     aiCheck: !!Number(q.aiCheck),
     aiEssay: !!Number(q.aiEssay),

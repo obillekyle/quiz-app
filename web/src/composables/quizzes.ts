@@ -18,6 +18,8 @@ export type QuizSettings = {
   allowRetake: boolean
   /** Off: score and answers stay hidden until released. */
   showResults: boolean
+  /** The "Show hint" control on each question, naming the topic and page. */
+  showHints: boolean
   resultsReleasedAt: number | null
   /** Identification answers checked by the AI beyond an exact match. */
   aiCheck: boolean

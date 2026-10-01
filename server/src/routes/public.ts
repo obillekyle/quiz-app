@@ -40,6 +40,8 @@ function rulesOf(q: any) {
     timeLimit: timed ? limit : null,
     allowRetake: flag(q.allowRetake, true),
     results: flag(q.showResults, true) || q.resultsReleasedAt != null,
+    // Off, the question's "Show hint" (its topic and page) is not offered.
+    hints: flag(q.showHints, true),
     ai: { check: flag(q.aiCheck, true), essay: flag(q.aiEssay, true) },
   }
 }
@@ -70,6 +72,7 @@ respond.get('/q/:code', async (c) => {
       timeLimit: rules.timeLimit,
       allowRetake: rules.allowRetake,
       showResults: rules.results,
+      showHints: rules.hints,
       aiCheck: rules.ai.check,
       aiEssay: rules.ai.essay,
     },
@@ -237,6 +240,8 @@ respond.post('/q/:code/attempts', async (c) => {
   const body = await c.req.json().catch(() => ({}))
   const name = typeof body.name === 'string' ? body.name.trim().slice(0, 80) : ''
   if (!name) throw new HTTPException(400, { message: 'Enter your name to start.' })
+  // The section is optional ("7 Sampaguita"); an empty one is stored as null.
+  const section = typeof body.section === 'string' ? body.section.trim().slice(0, 80) : ''
   const full = await fullQuiz(Number(q.id))
   const rules = rulesOf(q)
   const layout = newLayout(full.questions, rules)
@@ -245,6 +250,7 @@ respond.post('/q/:code/attempts', async (c) => {
     .values({
       quizId: q.id,
       name,
+      section: section || null,
       token,
       total: full.questions.reduce((s, x) => s + x.points, 0),
       layout: layout ? JSON.stringify(layout) : null,
@@ -347,6 +353,7 @@ respond.get('/attempts/:id', async (c) => {
   return c.json({
     status: r.status,
     name: String(r.name),
+    section: r.section ? String(r.section) : null,
     held: !rules.results,
     score: rules.results ? Number(r.score) : null,
     total: Number(r.total),

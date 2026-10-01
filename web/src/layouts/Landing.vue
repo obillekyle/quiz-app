@@ -16,7 +16,7 @@ import okyle from "../assets/brands/okyle.png"
     </RouterLink>
     <nav flex items="center" gap="xs">
       <RouterLink to="/login" btn="quiet">Sign in</RouterLink>
-      <RouterLink to="/register" btn="primary">Create account</RouterLink>
+      <RouterLink to="/register" btn="quiet">Create an account</RouterLink>
     </nav>
   </header>
 
@@ -35,6 +35,9 @@ import okyle from "../assets/brands/okyle.png"
         <RouterLink to="/register">Create an account</RouterLink>
         <RouterLink to="/login">Sign in</RouterLink>
         <RouterLink to="/q/8FSqvXwx">Sample quiz</RouterLink>
+        <!-- At a phone's width the row breaks here: the account links on one
+             line, the legal pair on the next. -->
+        <span class="nl" aria-hidden="true" />
         <RouterLink to="/privacy">Privacy</RouterLink>
         <RouterLink to="/terms">Terms</RouterLink>
       </nav>
@@ -121,12 +124,14 @@ import okyle from "../assets/brands/okyle.png"
     font-size: 14px;
     color: var(--muted);
   }
-  /* Five links at a phone's width go onto two lines, each link whole. */
   nav {
     display: flex;
     flex-wrap: wrap;
     gap: 8px 18px;
     font-size: 14px;
+  }
+  .nl {
+    display: none;
   }
   nav a {
     color: color-mix(in srgb, var(--ink) 70%, transparent);
@@ -209,7 +214,16 @@ import okyle from "../assets/brands/okyle.png"
 
 @media (max-width: 520px) {
   nav [btn="quiet"] {
+    min-height: 44px;
     padding-inline: var(--space-md);
+  }
+}
+
+@media (max-width: 480px) {
+  .foot-brand .nl {
+    display: block;
+    flex-basis: 100%;
+    height: 0;
   }
 }
 </style>

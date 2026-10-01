@@ -45,6 +45,7 @@ type SwitchKey =
   | "shuffleOptions"
   | "allowRetake"
   | "showResults"
+  | "showHints"
   | "aiCheck"
   | "aiEssay"
 
@@ -415,6 +416,10 @@ const SWITCHES: Record<SwitchKey, { title: string; text: string }> = {
     title: "Show score and answers",
     text: "Shows each respondent their score and the correct answers when they finish. Off, both wait until you release them, and respondents can leave an email to be told.",
   },
+  showHints: {
+    title: "Show hints",
+    text: "Shows a hint naming the topic and page on each question.",
+  },
   aiCheck: {
     title: "Check typed answers with AI",
     text: "An identification answer that misses the key goes to Google's Gemini, which accepts a misspelling or a synonym and says why. Off, only an exact match counts, ignoring capitals, accents and punctuation.",
@@ -722,7 +727,7 @@ const SWITCHES: Record<SwitchKey, { title: string; text: string }> = {
           <h2 id="s-responses">Responses</h2>
           <div stack>
             <label
-              v-for="k in ['allowRetake', 'showResults'] as const"
+              v-for="k in ['showHints', 'allowRetake', 'showResults'] as const"
               :key="k"
               class="row"
             >

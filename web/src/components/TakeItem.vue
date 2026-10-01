@@ -27,10 +27,12 @@ const props = withDefaults(
     options?: number[]
     /** The quiz maker holds the results back. */
     held?: boolean
+    /** Off, the "Show hint" control is not offered (a graded quiz). */
+    showHints?: boolean
     aiCheck?: boolean
     aiEssay?: boolean
   }>(),
-  { aiCheck: true, aiEssay: true },
+  { showHints: true, aiCheck: true, aiEssay: true },
 )
 const emit = defineEmits<{
   answer: [given: { choice?: number; text?: string }]
@@ -260,7 +262,7 @@ const points = (n: number) => `${n} ${n === 1 ? "point" : "points"}`
 
     <!-- Before answering, where to look; after, why, and the sentence itself. -->
     <details
-      v-if="!f && hint"
+      v-if="!f && hint && showHints"
       class="hint"
       :open="hintOpen"
       @toggle="hintOpen = ($event.target as HTMLDetailsElement).open"

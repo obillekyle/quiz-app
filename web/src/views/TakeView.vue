@@ -80,6 +80,7 @@ const info = computed(() => quiz.value?.quiz)
 const timeMode = computed(() => info.value?.timeMode ?? "none")
 const limitMs = computed(() => (info.value?.timeLimit ?? 0) * 1000)
 const allowRetake = computed(() => info.value?.allowRetake ?? true)
+const showHints = computed(() => info.value?.showHints ?? true)
 const aiCheck = computed(() => info.value?.aiCheck ?? true)
 const aiEssay = computed(() => info.value?.aiEssay ?? true)
 
@@ -225,6 +226,8 @@ const resumeNote = computed(() => {
 // ---- the name, and starting -------------------------------------------------------
 const nameDialog = ref<HTMLDialogElement>()
 const nameInput = ref("")
+/** Optional, under the name: the class section ("7 Sampaguita"). */
+const sectionInput = ref("")
 const startError = ref("")
 const starting = ref(false)
 
@@ -253,6 +256,7 @@ function begin() {
 
 async function start() {
   const name = nameInput.value.trim()
+  const section = sectionInput.value.trim()
   if (!name) {
     startError.value = "Enter your name to start."
     return
@@ -260,12 +264,13 @@ async function start() {
   starting.value = true
   startError.value = ""
   try {
-    const h = await takeApi.start(code, name, countVisit(code))
+    const h = await takeApi.start(code, name, section, countVisit(code))
     held.value = { attempt: h.attempt, token: h.token }
     holdAttempt(code, held.value)
     state.value = {
       status: "open",
       name,
+      section: section || null,
       held: !(info.value?.showResults ?? true),
       score: 0,
       total: quiz.value!.quiz.points,
@@ -289,9 +294,10 @@ async function start() {
 
 /** A fresh attempt; the old one stays with the quiz maker as it was. */
 function startOver() {
-  // The name field starts empty: on a shared classroom phone the next
-  // attempt is often another student's.
+  // The name and section fields start empty: on a shared classroom phone
+  // the next attempt is often another student's.
   nameInput.value = ""
+  sectionInput.value = ""
   dropAttempt(code)
   dropPace(code)
   held.value = null
@@ -586,6 +592,8 @@ const reportNote = ref("")
 const reportError = ref("")
 const reporting = ref(false)
 const reportSent = ref(false)
+/** A report went from this page: the flag turns red and stays so. */
+const reported = ref(false)
 /** The question on screen when the flag was pressed; none from the other stages. */
 const reportAbout = ref<{ id: number; n: number } | null>(null)
 function openReport() {
@@ -612,6 +620,7 @@ async function sendReport() {
       reportAbout.value?.id,
     )
     reportSent.value = true
+    reported.value = true
     reportReason.value = ""
     reportNote.value = ""
   } catch (e) {
@@ -661,8 +670,11 @@ const initial = (name: string) => (name.trim()[0] ?? "?").toUpperCase()
           v-if="quiz"
           type="button"
           class="flag"
-          aria-label="Report this quiz"
-          title="Report this quiz"
+          :data-reported="reported || undefined"
+          :aria-label="
+            reported ? 'Reported. Report this quiz again' : 'Report this quiz'
+          "
+          :title="reported ? 'Reported' : 'Report this quiz'"
           @click="openReport"
         >
           <Icon name="flag" :size="24" />
@@ -821,6 +833,7 @@ const initial = (name: string) => (name.trim()[0] ?? "?").toUpperCase()
             :busy="busy"
             :options="optionsOf(current.id)"
             :held="state?.held"
+            :show-hints="showHints"
             :ai-check="aiCheck"
             :ai-essay="aiEssay"
             @answer="answer"
@@ -1078,20 +1091,35 @@ const initial = (name: string) => (name.trim()[0] ?? "?").toUpperCase()
           <Icon name="info" :size="22" />
           <h2>This quiz needs your name</h2>
           <p>
-            The quiz maker sees it beside your answers. No account is needed.
+            The quiz maker sees your name and section beside your answers. No
+            account is needed.
           </p>
-          <label for="taker-name" class="sr-only">Your name</label>
-          <input
-            id="taker-name"
-            v-model="nameInput"
-            field
-            autofocus
-            placeholder="Your name"
-            autocomplete="name"
-            maxlength="80"
-            :aria-invalid="!!startError || undefined"
-            :aria-describedby="startError ? 'name-error' : undefined"
-          />
+          <div class="field">
+            <label for="taker-name">Name</label>
+            <input
+              id="taker-name"
+              v-model="nameInput"
+              field
+              autofocus
+              placeholder="Your name"
+              autocomplete="name"
+              maxlength="80"
+              :aria-invalid="!!startError || undefined"
+              :aria-describedby="startError ? 'name-error' : undefined"
+            />
+          </div>
+          <!-- Optional, as the paper test's Section line: skipped if empty. -->
+          <div class="field">
+            <label for="taker-section">Section (optional)</label>
+            <input
+              id="taker-section"
+              v-model="sectionInput"
+              field
+              placeholder="Such as 7 Sampaguita"
+              autocomplete="off"
+              maxlength="80"
+            />
+          </div>
           <p v-if="startError" id="name-error" class="error" role="alert">
             {{ startError }}
           </p>
@@ -1218,14 +1246,23 @@ const initial = (name: string) => (name.trim()[0] ?? "?").toUpperCase()
   border: 0;
   border-radius: 50%;
   background: none;
-  color: var(--bad);
+  /* The muted ink, like the bar's other glyphs: red would be the one
+     saturated color on the screen. Red once a report has gone. */
+  color: var(--muted);
   cursor: pointer;
 
   &:hover {
-    background: color-mix(in srgb, var(--bad) 10%, transparent);
+    background: var(--hover);
   }
   &:focus-visible {
-    outline: 2px solid var(--bad);
+    outline: 2px solid var(--accent);
+  }
+  &[data-reported] {
+    color: var(--bad);
+
+    &:hover {
+      background: color-mix(in srgb, var(--bad) 10%, transparent);
+    }
   }
 }
 /* The report shares the name prompt's box but not its centering: the
@@ -1632,6 +1669,15 @@ const initial = (name: string) => (name.trim()[0] ?? "?").toUpperCase()
   border-color: var(--accent);
   background: transparent;
   color: var(--accent);
+
+  /* Disabled (the first question's Back): outline and text at 38% of the
+     ink, Material's disabled level, in place of the global 60% opacity
+     that left the purple outline reading heavier than the quiet Skip. */
+  &:disabled {
+    border-color: color-mix(in srgb, var(--ink) 38%, transparent);
+    color: color-mix(in srgb, var(--ink) 38%, transparent);
+    opacity: 1;
+  }
 }
 /* Skip, as Material's text button: the accent on nothing. */
 .pass[btn="quiet"] {
@@ -1821,8 +1867,19 @@ const initial = (name: string) => (name.trim()[0] ?? "?").toUpperCase()
   .error {
     color: var(--bad);
   }
-  input {
-    margin-top: 6px;
+  /* A field with its label above, on the left edge of the centered form. */
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    width: 100%;
+    margin-top: 4px;
+    text-align: left;
+
+    label {
+      font-size: 13px;
+      font-weight: 600;
+    }
   }
 }
 .actions {

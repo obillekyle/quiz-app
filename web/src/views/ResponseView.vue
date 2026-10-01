@@ -24,6 +24,8 @@ type Detail = {
   response: {
     id: number
     name: string
+    /** The section typed under the name ("7 Sampaguita"), if any. */
+    section: string | null
     status: "open" | "finished"
     score: number
     total: number
@@ -143,6 +145,9 @@ async function saveScore(a: Answer) {
       <header class="head">
         <div class="title-row">
           <h1>{{ data.response.name }}</h1>
+          <span v-if="data.response.section" class="section">{{
+            data.response.section
+          }}</span>
           <span class="score" :data-low="low || undefined"
             >{{ data.response.score }} / {{ data.response.total }}</span
           >
@@ -367,6 +372,11 @@ async function saveScore(a: Answer) {
     margin: 0;
     font-size: clamp(24px, 3vw, 30px);
   }
+}
+/* The section, beside the name in the muted weight the sub line uses. */
+.section {
+  font-size: 15px;
+  color: var(--muted);
 }
 .score {
   font: 650 22px var(--font-heading);

@@ -14,6 +14,8 @@ type Row = {
   quizId: number
   quiz: string
   name: string
+  /** The section typed under the name ("7 Sampaguita"), if any. */
+  section: string | null
   status: "open" | "finished"
   score: number
   total: number
@@ -116,7 +118,11 @@ const avatarColor = (name: string) =>
             }}</span>
             <span class="who">
               <strong>{{ r.name }}</strong>
-              <span>{{ r.quiz }}</span>
+              <!-- The section first, then the quiz: "7 Sampaguita · Cell biology". -->
+              <span
+                ><template v-if="r.section">{{ r.section }} · </template
+                >{{ r.quiz }}</span
+              >
             </span>
             <template v-if="r.status === 'finished'">
               <span class="score" :data-low="low(r) || undefined"

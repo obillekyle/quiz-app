@@ -157,6 +157,34 @@ async function chat(text: string, sources: number[]) {
   }
 }
 
+/** The thread has something to show: a message, a reply on its way, an error. */
+const hasThread = computed(
+  () =>
+    !!saved.value?.messages.length ||
+    !!pendingText.value ||
+    !!working.value ||
+    !!error.value,
+)
+/** The chat holds nothing past the first draft's exchange. */
+const fresh = computed(() => {
+  const ms = saved.value?.messages ?? []
+  const firstAi = ms.findIndex((m) => m.role === "ai")
+  return !ms.slice(firstAi + 1).some((m) => m.role === "user")
+})
+/** Three asks the chat can take, worded for this quiz. */
+const starters = computed(() => [
+  `Make question ${Math.min(4, Math.max(1, questions.value.length))} harder`,
+  saved.value?.sources.length
+    ? "Add two questions from page 2"
+    : "Add two more questions",
+  saved.value?.quiz.language === "fil"
+    ? "Put the hints in English"
+    : "Put the hints in Filipino",
+])
+function suggest(text: string) {
+  box.value?.fill(text)
+}
+
 // Keep the newest message in view.
 watch(
   () => [saved.value?.messages.length, working.value],
@@ -292,23 +320,25 @@ void isApiError
       >
         <Icon name="back" :size="22" />
       </RouterLink>
-      <input
-        v-model="title"
-        class="title"
-        aria-label="Quiz title"
-        placeholder="Quiz title"
-        :disabled="!saved"
-      />
-      <span v-if="saved" class="status" :data-status="saved.quiz.status">
-        {{ saved.quiz.status === "published" ? "Shared" : "Draft" }}
-      </span>
+      <div class="name">
+        <input
+          v-model="title"
+          class="title"
+          aria-label="Quiz title"
+          placeholder="Quiz title"
+          :disabled="!saved"
+        />
+        <span v-if="saved" class="status" :data-status="saved.quiz.status">
+          {{ saved.quiz.status === "published" ? "Shared" : "Draft" }}
+        </span>
+      </div>
       <span class="spacer" />
       <span v-if="dirty" class="unsaved">Unsaved changes</span>
       <!-- The print reads the saved quiz, so it waits for a save. -->
       <button
         v-if="dirty || !saved?.questions.length"
         type="button"
-        class="icon-button"
+        class="icon-button print"
         disabled
         :aria-label="
           dirty ? 'Save first to print the latest' : 'Add questions to print'
@@ -322,7 +352,7 @@ void isApiError
       <RouterLink
         v-else
         :to="`/app/quiz/${id}/print`"
-        class="icon-button"
+        class="icon-button print"
         aria-label="Print as a test"
         title="Print as a test"
       >
@@ -395,7 +425,12 @@ void isApiError
             v-show="panel === 'chat'"
             :data-phone-show="phoneTab === 'chat' || undefined"
           >
-            <div class="thread" ref="thread" aria-live="polite">
+            <div
+              v-show="hasThread"
+              class="thread"
+              ref="thread"
+              aria-live="polite"
+            >
               <template v-for="m in saved?.messages ?? []" :key="m.id">
                 <div class="msg" :data-role="m.role">
                   <span v-if="m.role === 'ai'" class="avatar"
@@ -451,11 +486,30 @@ void isApiError
                 </div>
               </div>
             </div>
+            <!-- Until the chat has an ask of its own: what it is for, and three
+                 asks it can take, each filling the box. -->
+            <div
+              v-if="saved && fresh && !working && !pendingText"
+              class="starter"
+              :data-alone="!hasThread || undefined"
+            >
+              <p>Changes are made from here. Attach more pages with&nbsp;+.</p>
+              <div class="chips">
+                <button
+                  v-for="s in starters"
+                  :key="s"
+                  type="button"
+                  @click="suggest(s)"
+                >
+                  {{ s }}
+                </button>
+              </div>
+            </div>
             <PromptBox
               ref="box"
               compact
               :busy="!!working || !saved"
-              placeholder="Ask for a change…"
+              placeholder="Ask for a change."
               :hint="working ? 'The AI is working…' : ''"
               @send="chat"
             />
@@ -519,8 +573,7 @@ void isApiError
                 >{{ counts.found }} found in {{ inFiles }}</span
               >
               <span v-if="counts.missing" class="pill missing"
-                >{{ counts.missing }} not found: check
-                {{ counts.missing === 1 ? "it" : "them" }}</span
+                >{{ counts.missing }} not found in {{ inFiles }}</span
               >
               <span v-if="counts.photo" class="pill photo"
                 >{{ counts.photo }} from photos: check by eye</span
@@ -590,6 +643,15 @@ void isApiError
   }
 }
 
+/* The name and its status, beside each other; a column on a phone. */
+.name {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
 /* As wide as the title itself, so the status chip sits beside it. */
 .title {
   min-width: 8ch;
@@ -639,6 +701,15 @@ void isApiError
 
 .save {
   min-width: 92px;
+
+  /* Nothing to save: Material's disabled fill (12% of the ink, 38% text)
+     rather than the accent at 60%, which read as a live button. */
+  &:disabled {
+    opacity: 1;
+    border-color: transparent;
+    background: color-mix(in srgb, var(--ink) 12%, transparent);
+    color: color-mix(in srgb, var(--ink) 38%, transparent);
+  }
 }
 
 .load-error {
@@ -830,6 +901,59 @@ void isApiError
   40% {
     opacity: 1;
     transform: scale(1);
+  }
+}
+
+.starter {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 2px;
+
+  p {
+    margin: 0;
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--muted);
+    text-wrap: pretty;
+  }
+  /* With no thread above it, the pane's empty state: in the middle. */
+  &[data-alone] {
+    flex: 1;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+
+    .chips {
+      justify-content: center;
+    }
+  }
+}
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+
+  button {
+    min-height: 36px;
+    padding: 0 14px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-full);
+    background: var(--surface);
+    font: inherit;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--ink);
+    text-align: left;
+    cursor: pointer;
+
+    &:hover {
+      background: var(--hover);
+    }
+    &:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
   }
 }
 
@@ -1030,12 +1154,35 @@ main {
   main[data-phone-show] {
     display: block !important;
   }
-  .unsaved {
+  /* The bar: back, the name with its status as a caption under it, Save.
+     The print is in the overview's Quiz options, so the name gets the row. */
+  .topbar {
+    height: auto;
+    min-height: 60px;
+    padding-block: 6px;
+  }
+  .unsaved,
+  .spacer,
+  .print {
     display: none;
   }
+  .name {
+    flex: 1;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+  }
   .title {
+    width: 100%;
+    max-width: none;
     height: 44px;
     font-size: 17px;
+  }
+  .status,
+  .status[data-status="published"] {
+    padding: 0 10px;
+    background: none;
+    line-height: 1.2;
   }
   /* The bar's controls a finger's size, and never squeezed by the title. */
   .icon-button {
@@ -1044,8 +1191,14 @@ main {
     height: 44px;
   }
   .ai-button,
-  .add-row button {
+  .add-row button,
+  .chips button {
     min-height: 44px;
+  }
+  /* The count on its own line, the chips together under it. */
+  .summary-bar strong {
+    flex-basis: 100%;
+    margin-right: 0;
   }
 }
 </style>

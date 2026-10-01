@@ -18,6 +18,7 @@ responses.get('/', async (c) => {
     quizId: number
     quiz: string
     name: string
+    section: string | null
     status: 'open' | 'finished'
     score: number
     total: number
@@ -31,6 +32,7 @@ responses.get('/', async (c) => {
         quizId: Number(q.id),
         quiz: String(q.title),
         name: String(r.name),
+        section: r.section ? String(r.section) : null,
         status: r.status === 'finished' ? 'finished' : 'open',
         score: Number(r.score),
         total: Number(r.total),

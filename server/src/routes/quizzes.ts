@@ -216,7 +216,7 @@ quizzes.put('/:id', async (c) => {
   })
 })
 
-const SWITCHES = ['shuffleQuestions', 'shuffleOptions', 'allowRetake', 'showResults', 'aiCheck', 'aiEssay'] as const
+const SWITCHES = ['shuffleQuestions', 'shuffleOptions', 'allowRetake', 'showResults', 'showHints', 'aiCheck', 'aiEssay'] as const
 const ICON_ID = /^[a-z0-9-]+:[a-z0-9-]+$/
 /** The limits each time mode allows, in seconds, and the message for a limit outside them. */
 const LIMITS = {
@@ -587,6 +587,7 @@ quizzes.post('/:id/duplicate', async (c) => {
       timeLimit: s.timeLimit,
       allowRetake: s.allowRetake,
       showResults: s.showResults,
+      showHints: s.showHints,
       aiCheck: s.aiCheck,
       aiEssay: s.aiEssay,
     })
@@ -643,6 +644,7 @@ quizzes.get('/:id/responses', async (c) => {
     responses: rows.map((r: any) => ({
       id: Number(r.id),
       name: String(r.name),
+      section: r.section ? String(r.section) : null,
       status: r.status,
       score: Number(r.score),
       total: Number(r.total),
@@ -685,7 +687,7 @@ quizzes.get('/:id/responses.csv', async (c) => {
   const rows = await DB.from('responses').where('responses.quizId', id).array()
   const answers = await answersOf(rows.map((r: any) => Number(r.id)))
   const earned = new Map<string, number>(answers.map((a: any) => [`${a.responseId}:${a.questionId}`, Number(a.score)]))
-  const fixed = ['Name', 'Score', 'Total', 'Percent', 'Status', 'Started', 'Finished']
+  const fixed = ['Name', 'Section', 'Score', 'Total', 'Percent', 'Status', 'Started', 'Finished']
   const head = [...fixed, ...full.questions.map((_, i) => `Q${i + 1}`), 'Rating']
   const prompts = [...fixed.map(() => ''), ...full.questions.map((q) => q.prompt.slice(0, 60)), '']
   const lines = [...rows]
@@ -694,6 +696,7 @@ quizzes.get('/:id/responses.csv', async (c) => {
       const total = Number(r.total)
       return [
         String(r.name),
+        r.section ? String(r.section) : '',
         Number(r.score),
         total,
         total ? Math.round((Number(r.score) / total) * 100) : '',
@@ -770,6 +773,7 @@ quizzes.get('/:id/responses/:rid', async (c) => {
     response: {
       id: Number(r.id),
       name: String(r.name),
+      section: r.section ? String(r.section) : null,
       status: r.status,
       score: Number(r.score),
       total: Number(r.total),

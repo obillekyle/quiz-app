@@ -256,13 +256,19 @@ const avatarColor = (name: string) =>
             <div class="head-text">
               <div class="title-row">
                 <h1>{{ o.quiz.title }}</h1>
-                <span class="status" :data-status="o.quiz.status">{{
-                  o.quiz.status === "published"
-                    ? "Shared"
-                    : sharedBefore
-                      ? "Not shared"
-                      : "Draft"
-                }}</span>
+                <!-- Archived, the link does not open: "Shared" beside "Archived" would say otherwise. -->
+                <span
+                  v-if="!o.quiz.archived"
+                  class="status"
+                  :data-status="o.quiz.status"
+                  >{{
+                    o.quiz.status === "published"
+                      ? "Shared"
+                      : sharedBefore
+                        ? "Not shared"
+                        : "Draft"
+                  }}</span
+                >
                 <span v-if="o.quiz.archived" class="status">Archived</span>
                 <a
                   v-if="o.reports.length"
@@ -599,6 +605,10 @@ const avatarColor = (name: string) =>
             :status="o.quiz.status"
             :share-code="o.quiz.shareCode"
             :questions="o.shape.questions"
+            :show-results="o.quiz.showResults"
+            :show-hints="o.quiz.showHints"
+            :allow-retake="o.quiz.allowRetake"
+            :archived="o.quiz.archived"
             @changed="refresh"
           />
         </section>

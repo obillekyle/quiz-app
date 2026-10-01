@@ -63,6 +63,10 @@ const { data, error, loading, refresh } = useFetch<FullQuiz>(
           :status="data.quiz.status"
           :share-code="data.quiz.shareCode"
           :questions="data.questions.length"
+          :show-results="data.quiz.showResults"
+          :show-hints="data.quiz.showHints"
+          :allow-retake="data.quiz.allowRetake"
+          :archived="data.quiz.archived"
           large
           @changed="refresh"
         />

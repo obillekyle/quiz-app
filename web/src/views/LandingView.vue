@@ -11,24 +11,25 @@ const options = [
 const sample = "/q/8FSqvXwx"
 
 // The two claims the card above cannot show, each with a screenshot of the
-// real screen. The pictures live in public/landing/ (1200 wide WebP for the
-// overview; the printed page cropped out of its preview at its own width).
+// real screen. The pictures live in public/landing/: the results from the
+// stats row through the three most missed questions, captured at 2x; the
+// printed page cut out of its preview at its own width.
 const claimRows = [
   {
     title: "It prints as an exam.",
-    text: "Set A and Set B, an answer key on its own page, and the table of specifications, in black and white.",
+    text: "Set A and Set B print with an answer key on its own page and the table of specifications, in black and white.",
     src: "/landing/print.webp",
     width: 815,
-    height: 631,
+    height: 674,
     alt: "Set A of the printed test: the school header, name and score lines, and Test I, multiple choice.",
   },
   {
     title: "Results show what to teach again.",
-    text: "The questions most people missed, and a short note on which ideas they mixed up.",
+    text: "Results list the questions most people missed, with a short note on which ideas they mixed up.",
     src: "/landing/overview.webp",
-    width: 1200,
-    height: 717,
-    alt: "The overview of a shared quiz: views, quiz takers, average score, responses by day, and the most missed questions.",
+    width: 1528,
+    height: 1246,
+    alt: "A shared quiz's results: views, quiz takers, average score and highest score, responses by day, and the three most missed questions.",
   },
 ]
 </script>
@@ -99,16 +100,15 @@ const claimRows = [
   </section>
 
   <section class="claims">
-    <!-- The first claim is shown by the card above, so it carries no picture. -->
-    <div class="claim text-only">
-      <div class="claim-text">
-        <h2>Every question shows its source.</h2>
-        <p>
-          The sentence it came from sits under it, as in the card above. A
-          question whose sentence is not in the file is flagged before the quiz
-          is shared.
-        </p>
-      </div>
+    <!-- The first claim is shown by the card above, so it is the section's
+         intro rather than a row with a picture. -->
+    <div class="claim-intro">
+      <h2>Every question shows its source.</h2>
+      <p>
+        The sentence it came from sits under it, as in the card above. A
+        question whose sentence is not in the file is flagged before the quiz is
+        shared.
+      </p>
     </div>
     <div v-for="c in claimRows" :key="c.title" class="claim">
       <div class="claim-text">
@@ -130,6 +130,9 @@ const claimRows = [
 
 <style scoped>
 .hero {
+  /* The lede's 46ch at its largest size, so the note under the buttons can
+     take the same width without wrapping a word or two to a second line. */
+  --copy-w: 585px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -149,7 +152,7 @@ h1 {
 
 .lede {
   margin: var(--space-xl) 0 0;
-  max-width: 46ch;
+  max-width: var(--copy-w);
   font-size: clamp(16px, 1.4vw, 19px);
   line-height: 1.5;
   color: var(--muted);
@@ -157,9 +160,15 @@ h1 {
 
 .note {
   margin: var(--space-md) 0 0;
-  max-width: 46ch;
+  max-width: var(--copy-w);
   font-size: 13px;
   color: var(--muted);
+}
+
+@media (max-width: 520px) {
+  .ctas [btn] {
+    min-height: 44px;
+  }
 }
 
 /* ---- the product ------------------------------------------------------------ */
@@ -315,15 +324,23 @@ blockquote {
   order: -1;
 }
 
-.claim.text-only {
-  grid-template-columns: 1fr;
-  max-width: 52ch;
+/* The intro spans the section, centered, with a hairline under it; each row's
+   text has the hairline above. */
+.claim-intro {
+  width: min(100%, 52ch);
+  margin: 0 auto;
+  padding-bottom: clamp(32px, 5vh, 48px);
+  border-bottom: 1px solid var(--line);
+  text-align: center;
 }
 
 .claim-text {
   padding-top: var(--space-lg);
   border-top: 1px solid var(--line);
+}
 
+.claim-intro,
+.claim-text {
   h2 {
     margin: 0;
     font-size: var(--fs-xl);

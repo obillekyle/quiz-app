@@ -36,6 +36,8 @@ const emit = defineEmits<{
 }>()
 
 const text = ref("")
+/** The box's name for assistive tech: the placeholder without its full stop. */
+const label = computed(() => props.placeholder.replace(/[.…]+$/, ""))
 const picker = ref<HTMLInputElement>()
 const dragging = ref(false)
 const note = ref("")
@@ -205,8 +207,13 @@ const field = ref<HTMLTextAreaElement>()
 function focus() {
   field.value?.focus()
 }
+/** Puts a ready-made ask in the box, to send or to change first. */
+function fill(t: string) {
+  text.value = t
+  focus()
+}
 
-defineExpose({ clear, focus })
+defineExpose({ clear, focus, fill })
 </script>
 
 <template>
@@ -224,7 +231,7 @@ defineExpose({ clear, focus })
       v-model="text"
       :rows="compact ? 1 : 2"
       :placeholder="placeholder"
-      :aria-label="placeholder"
+      :aria-label="label"
       @keydown="onKey"
     />
 
@@ -493,6 +500,22 @@ textarea {
 @media (max-width: 767px) {
   textarea {
     font-size: 17px;
+  }
+  /* A finger's size for the attach and the send, the compact box included;
+     the file chip's cross keeps its 24px and gets 44 to tap. */
+  .box[data-compact] .attach,
+  .box[data-compact] .send {
+    width: 44px;
+    height: 44px;
+  }
+  .files button {
+    position: relative;
+
+    &::after {
+      content: "";
+      position: absolute;
+      inset: -10px;
+    }
   }
 }
 </style>
