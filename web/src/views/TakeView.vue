@@ -14,6 +14,7 @@ import {
   LIGHT_BG,
   LIGHT_SURFACE,
   mix,
+  readableOn,
   readableOnAll,
 } from "../composables/color"
 import { isDark } from "../composables/theme"
@@ -127,9 +128,15 @@ const tint = computed(() => {
     isDark.value ? DARK_BG : LIGHT_BG,
     mix(surface, c, 0.16),
   ]
+  // In the dark theme a dark pick (the palette's purple is 1.73:1 on the
+  // dark surface, its brown 1.63:1) would leave a button that barely
+  // stands off the page: there the fill is the color moved toward white
+  // until it is 3:1 against the surface. A color that already stands off
+  // is kept as picked, as every color is in the light theme.
+  const fill = isDark.value ? readableOn(c, surface, 3) : c
   return {
-    "--student": c,
-    "--student-ink": inkFor(c),
+    "--student": fill,
+    "--student-ink": inkFor(fill),
     "--accent-text": readableOnAll(c, grounds),
   }
 })

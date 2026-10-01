@@ -19,8 +19,13 @@ const PIECES = 6
 const STEP = 250
 /** All four drawn, a short hold, then from the top. */
 const CYCLE = CARDS * PIECES + 2
-const tick = ref(0)
-const timer = setInterval(() => (tick.value = (tick.value + 1) % CYCLE), STEP)
+// With reduced motion asked for, the four cards stand whole and nothing
+// loops: the status line alone says the work is going on.
+const still = matchMedia("(prefers-reduced-motion: reduce)").matches
+const tick = ref(still ? CYCLE : 0)
+const timer = still
+  ? undefined
+  : setInterval(() => (tick.value = (tick.value + 1) % CYCLE), STEP)
 onBeforeUnmount(() => clearInterval(timer))
 const on = (card: number, piece: number) => tick.value >= card * PIECES + piece
 </script>
