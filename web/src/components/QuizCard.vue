@@ -39,6 +39,7 @@ const responses = computed(() => {
       :id="quiz.id"
       :icon="quiz.icon"
       :image="quiz.image"
+      :color="quiz.color"
       :title="quiz.title"
       :icon-size="layout === 'grid' ? 64 : 26"
     />

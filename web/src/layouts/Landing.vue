@@ -66,7 +66,9 @@ import okyle from "../assets/brands/okyle.png"
       />
     </nav>
 
-    <p class="credit">Built for the RAITE 2026 AI in Education Hackathon.</p>
+    <p class="credit">
+      Built by BPC Competitors for the RAITE 2026 AI in Education Hackathon.
+    </p>
   </footer>
 </template>
 

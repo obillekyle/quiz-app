@@ -42,6 +42,8 @@ export type PublicQuiz = {
     icon: string | null
     /** The cover image's address, when it has one. */
     image: string | null
+    /** The page's accent, "#rrggbb"; null leaves the student purple. */
+    color: string | null
     timeMode: TimeMode
     /** Seconds: for each question, or for the whole quiz. */
     timeLimit: number | null

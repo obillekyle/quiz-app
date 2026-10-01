@@ -4,6 +4,7 @@ import { onBeforeRouteLeave, useRoute } from "vue-router"
 import Icon from "../components/Icon.vue"
 import LogoMark from "../components/LogoMark.vue"
 import PromptBox from "../components/PromptBox.vue"
+import DraftPreview from "../components/DraftPreview.vue"
 import QuestionCard from "../components/QuestionCard.vue"
 import { api, ApiError } from "../composables/api"
 import {
@@ -36,6 +37,92 @@ const keyed = (q: Question) => ({
 const loadError = ref("")
 const error = ref("")
 const working = ref<"" | "draft" | "chat" | "save">("")
+
+/**
+ * The draft's cards, by key range: they rise in one after another, the way
+ * they were written. A card added by hand later has a key past the range
+ * and simply appears.
+ */
+const rising = ref<[number, number]>([0, 0])
+const rises = (key: number) => key >= rising.value[0] && key < rising.value[1]
+/**
+ * The cards a chat reply changed, by key. The reply replaces every key, so
+ * a changed card is one whose content (as saved) was not on screen before
+ * the reply; it flashes its border once.
+ */
+const changed = ref(new Set<number>())
+/** The cards a chat reply added, by key: each slides into its place. */
+const added = ref(new Set<number>())
+/** How many questions the last chat reply removed, for its summary line. */
+const removed = ref(0)
+/** The reply whose summary line (what changed) is shown under its text. */
+const lastReply = ref(0)
+
+/**
+ * The reply that just arrived streams in word by word, about 18 ms a word
+ * and never longer than 1.6 s in all. The text comes whole from the server;
+ * this is a reading pace, not the network's. Under reduced motion the whole
+ * text is on screen at once.
+ */
+const stream = ref<{ id: number; shown: number; tokens: string[] } | null>(null)
+let streamFrame = 0
+function streamReply() {
+  const m = [...(saved.value?.messages ?? [])]
+    .reverse()
+    .find((x) => x.role === "ai")
+  if (!m) return
+  cancelAnimationFrame(streamFrame)
+  const tokens = m.text.match(/\S+\s*|\s+/g) ?? []
+  if (
+    !tokens.length ||
+    matchMedia("(prefers-reduced-motion: reduce)").matches
+  ) {
+    stream.value = null
+    return
+  }
+  const per = Math.min(18, 1600 / tokens.length)
+  stream.value = { id: m.id, shown: 1, tokens }
+  const t0 = performance.now()
+  const step = (t: number) => {
+    const st = stream.value
+    if (!st || st.id !== m.id) return
+    st.shown = Math.min(tokens.length, Math.floor((t - t0) / per) + 1)
+    if (st.shown < tokens.length) streamFrame = requestAnimationFrame(step)
+    else stream.value = null
+  }
+  streamFrame = requestAnimationFrame(step)
+}
+const streamText = computed(() =>
+  stream.value ? stream.value.tokens.slice(0, stream.value.shown).join("") : "",
+)
+onBeforeUnmount(() => cancelAnimationFrame(streamFrame))
+
+/** "1, 3 and 5" */
+const listOf = (ns: number[]) =>
+  ns.length < 2
+    ? String(ns[0] ?? "")
+    : `${ns.slice(0, -1).join(", ")} and ${ns[ns.length - 1]}`
+/** What the last reply did to the list, in a sentence under its text. */
+const changedSummary = computed(() => {
+  const at = (keys: Set<number>) =>
+    questions.value.flatMap((q, i) => (keys.has(q._key) ? [i + 1] : []))
+  const say = (verb: string, ns: number[]) =>
+    ns.length
+      ? `${verb} ${ns.length === 1 ? "question" : "questions"} ${listOf(ns)}.`
+      : ""
+  const r = removed.value
+  return [
+    say("Changed", at(changed.value)),
+    say("Added", at(added.value)),
+    r ? `Removed ${r} ${r === 1 ? "question" : "questions"}.` : "",
+  ]
+    .filter(Boolean)
+    .join(" ")
+})
+
+/** The phase the draft is in, for the questions pane: a timer tuned to the measured draft. */
+const draftPhase = ref("")
+let phaseTimer: ReturnType<typeof setTimeout> | undefined
 
 function adopt(d: FullQuiz) {
   saved.value = d
@@ -79,16 +166,34 @@ onMounted(async () => {
 
 async function draft() {
   working.value = "draft"
+  const from = nextKey
   error.value = ""
+  draftPhase.value = "Reading the module"
+  clearTimeout(phaseTimer)
+  phaseTimer = setTimeout(
+    () => (draftPhase.value = "Writing the questions"),
+    3000,
+  )
   try {
-    adopt(await api<FullQuiz>(`/quizzes/${id.value}/draft`, { method: "POST" }))
+    const d = await api<FullQuiz>(`/quizzes/${id.value}/draft`, {
+      method: "POST",
+    })
+    // The reply is in; the cards come on the next frame.
+    clearTimeout(phaseTimer)
+    draftPhase.value = "Checking each quote against the file"
+    await new Promise((r) => requestAnimationFrame(() => r(undefined)))
+    adopt(d)
+    rising.value = [from, nextKey]
+    streamReply()
     refreshQuizzes()
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
   } finally {
+    clearTimeout(phaseTimer)
     working.value = ""
   }
 }
+onBeforeUnmount(() => clearTimeout(phaseTimer))
 
 // ---- saving -------------------------------------------------------------------
 const savedFlash = ref(false)
@@ -142,12 +247,32 @@ async function chat(text: string, sources: number[]) {
   working.value = "chat"
   pendingText.value = text || "Use this material too."
   box.value?.clear()
+  const before = new Set(strip(questions.value).map((q) => JSON.stringify(q)))
+  const count = questions.value.length
   try {
     adopt(
       await api<FullQuiz>(`/quizzes/${id.value}/chat`, {
         body: { message: text, sources },
       }),
     )
+    // A card the list did not hold before: changed in place, or, past the
+    // old count, added (the AI appends).
+    const flagged = questions.value.filter(
+      (q) => !before.has(JSON.stringify(strip([q])[0])),
+    )
+    added.value = new Set(
+      flagged
+        .filter((q) => questions.value.indexOf(q) >= count)
+        .map((q) => q._key),
+    )
+    changed.value = new Set(
+      flagged.filter((q) => !added.value.has(q._key)).map((q) => q._key),
+    )
+    removed.value = Math.max(0, count - questions.value.length)
+    lastReply.value =
+      [...(saved.value?.messages ?? [])].reverse().find((m) => m.role === "ai")
+        ?.id ?? 0
+    streamReply()
     refreshQuizzes()
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
@@ -184,6 +309,12 @@ const starters = computed(() => [
 function suggest(text: string) {
   box.value?.fill(text)
 }
+
+// The streaming bubble grows; the thread keeps its end in view.
+watch(streamText, () => {
+  const el = thread.value
+  if (el) el.scrollTop = el.scrollHeight
+})
 
 // Keep the newest message in view.
 watch(
@@ -437,7 +568,15 @@ void isApiError
                     ><LogoMark :size="18"
                   /></span>
                   <div class="bubble">
-                    <p>{{ m.text }}</p>
+                    <!-- The words land one by one, a 2px bar after the last
+                         so far; a screen reader gets the whole text. -->
+                    <template v-if="stream?.id === m.id">
+                      <p aria-hidden="true">
+                        {{ streamText }}<i class="caret" />
+                      </p>
+                      <span class="sr-only">{{ m.text }}</span>
+                    </template>
+                    <p v-else>{{ m.text }}</p>
                     <ul v-if="m.meta?.files?.length" class="attached">
                       <li v-for="f in m.meta.files" :key="f">
                         <Icon name="file" :size="14" /> {{ f }}
@@ -445,14 +584,27 @@ void isApiError
                     </ul>
                     <small
                       v-if="
-                        m.role === 'ai' && (m.meta?.questions || m.meta?.ms)
+                        m.role === 'ai' &&
+                        stream?.id !== m.id &&
+                        (m.meta?.questions || m.meta?.ms)
                       "
+                      class="after"
                     >
                       <template v-if="m.meta?.questions"
                         >{{ m.meta.questions }} questions ·
                         {{ m.meta.found }} found in {{ inFiles }} · </template
                       >{{ secs(m.meta?.ms) }}
                     </small>
+                    <small
+                      v-if="
+                        m.role === 'ai' &&
+                        m.id === lastReply &&
+                        stream?.id !== m.id &&
+                        changedSummary
+                      "
+                      class="after ops"
+                      >{{ changedSummary }}</small
+                    >
                   </div>
                 </div>
               </template>
@@ -555,13 +707,10 @@ void isApiError
               <div skeleton style="height: 56px" />
             </div>
           </div>
-          <div
+          <DraftPreview
             v-else-if="working === 'draft' && !questions.length"
-            class="drafting"
-          >
-            <span class="dots" aria-hidden="true"><i /><i /><i /></span>
-            <p>The AI is drafting your quiz. It takes about 20 seconds.</p>
-          </div>
+            :status="draftPhase"
+          />
           <template v-else>
             <div class="summary-bar">
               <strong
@@ -592,6 +741,10 @@ void isApiError
                 :total="questions.length"
                 :language="saved.quiz.language"
                 :quiz-id="saved.quiz.id"
+                :style="{ '--i': q._key - rising[0] }"
+                :data-rise="rises(q._key) || undefined"
+                :data-changed="changed.has(q._key) || undefined"
+                :data-new="added.has(q._key) || undefined"
                 @remove="questions.splice(i, 1)"
                 @up="move(i, -1)"
                 @down="move(i, 1)"
@@ -851,6 +1004,38 @@ void isApiError
     gap: 10px;
     color: color-mix(in srgb, var(--ink) 70%, transparent);
   }
+  /* The lines under a reply (its numbers, what it changed) come after the
+     last word has landed. */
+  .after {
+    animation: fade-in var(--fast) var(--ease) both;
+  }
+  .ops {
+    margin-top: 2px;
+    color: var(--ink);
+  }
+}
+/* The bar after the newest word: 2px, in the line's height and not its
+   width, so the text wraps as it will once it is whole. */
+.caret {
+  display: inline-block;
+  width: 0;
+  height: 1em;
+  margin-right: -2px;
+  border-left: 2px solid var(--accent);
+  vertical-align: -0.15em;
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .attached {
@@ -1033,15 +1218,6 @@ main {
   border: 1px solid var(--line);
   border-radius: var(--radius-xl);
   background: var(--surface);
-}
-
-.drafting {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 14px;
-  margin-top: 18vh;
-  color: var(--muted);
 }
 
 .summary-bar {

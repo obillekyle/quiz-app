@@ -64,8 +64,13 @@ const recent = computed(() =>
 const quizId = computed(() =>
   route.params.id ? Number(route.params.id) : null,
 )
-const quizTitle = computed(
-  () => quizzes.value.find((q) => q.id === quizId.value)?.title ?? "Quiz",
+const quizEntry = computed(() =>
+  quizzes.value.find((q) => q.id === quizId.value),
+)
+const quizTitle = computed(() => quizEntry.value?.title ?? "Quiz")
+// The square's color: the quiz's own, or the palette's by id until the list arrives.
+const quizTint = computed(() =>
+  quizColor(quizEntry.value ?? { id: quizId.value ?? 0 }),
 )
 // The quiz's own pages, in its sidebar (Kyle, 22:58), the way a project's
 // sidebar works.
@@ -321,7 +326,7 @@ function closeSearch() {
             class="item recent"
             :title="folded ? q.title : undefined"
           >
-            <i :style="{ background: quizColor(q.id) }" />
+            <i :style="{ background: quizColor(q) }" />
             <span>{{ q.title }}</span>
           </RouterLink>
         </div>
@@ -337,7 +342,7 @@ function closeSearch() {
         </div>
         <div class="sidebar-section">
           <div class="quiz-id" :title="folded ? quizTitle : undefined">
-            <i :style="{ background: quizColor(quizId) }" />
+            <i :style="{ background: quizTint }" />
             <span>{{ quizTitle }}</span>
           </div>
           <RouterLink
@@ -780,6 +785,16 @@ button {
   flex-direction: column;
   /* Every page's column (at most 1120 px) centered beside the sidebar. */
   align-items: center;
+  /* The column scrolls, not the document, and keeps its scrollbar's room so
+     a page's width is the same whether it scrolls or not. */
+  height: calc(100dvh - 60px);
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+/* The overview scrolls its two columns itself and pins its panel to the
+   window's edge, so it keeps no gutter here. */
+.content:has(.overview) {
+  scrollbar-gutter: auto;
 }
 /* The overview fills the width itself: its panel is pinned to the window's
    edge, and it centers its own page beside the panel. */

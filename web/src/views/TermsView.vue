@@ -27,8 +27,9 @@ onUnmounted(() => {
       <p class="dated">Last updated 2026-10-02</p>
       <p>
         QuizApp is a free platform for making and sharing quizzes, run by Kyle
-        Cyrus Obille, an individual, and built for the RAITE 2026 AI in
-        Education Hackathon. Using it means you accept these terms and the
+        Cyrus Obille, an individual, and built by BPC Competitors for the RAITE
+        2026 AI in Education Hackathon. Using it means you accept these terms
+        and the
         <RouterLink to="/privacy">privacy policy</RouterLink>.
       </p>
 

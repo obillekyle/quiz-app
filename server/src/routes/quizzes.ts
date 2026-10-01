@@ -218,6 +218,7 @@ quizzes.put('/:id', async (c) => {
 
 const SWITCHES = ['shuffleQuestions', 'shuffleOptions', 'allowRetake', 'showResults', 'showHints', 'aiCheck', 'aiEssay'] as const
 const ICON_ID = /^[a-z0-9-]+:[a-z0-9-]+$/
+const COLOR = /^#[0-9a-f]{6}$/i
 /** The limits each time mode allows, in seconds, and the message for a limit outside them. */
 const LIMITS = {
   question: { min: 10, max: 600, say: 'Use a limit between 10 seconds and 10 minutes.' },
@@ -287,11 +288,21 @@ quizzes.patch('/:id', async (c) => {
     else if (typeof icon === 'string' && icon.length <= 80 && ICON_ID.test(icon)) set.icon = icon
     else throw bad('Use an icon id in the form set:name, such as fluent-emoji-flat:test-tube, or pick one from the search.')
   }
+  if ('color' in body) {
+    const color = typeof body.color === 'string' ? body.color.trim() : body.color
+    if (color === null || color === '') set.color = null
+    else if (typeof color === 'string' && COLOR.test(color)) set.color = color.toLowerCase()
+    else throw bad('Use a color in the form #rrggbb, such as #2f6fdb.')
+  }
   for (const k of SWITCHES)
     if (k in body) {
       if (typeof body[k] !== 'boolean') throw bad(`${k} takes true or false.`)
       set[k] = body[k]
     }
+  if ('feedback' in body) {
+    if (body.feedback !== 'each' && body.feedback !== 'end') throw bad('feedback takes "each" or "end".')
+    set.feedback = body.feedback
+  }
   if ('timeMode' in body || 'timeLimit' in body) {
     const mode = 'timeMode' in body ? body.timeMode : quiz.timeMode
     if (mode === 'none') {
@@ -310,20 +321,23 @@ quizzes.patch('/:id', async (c) => {
     const any = await DB.from('questions').where('questions.quizId', quiz.id).exists()
     if (!any) throw new HTTPException(400, { message: 'Add at least one question before sharing the quiz.' })
   }
-  // Stop sharing pauses every open attempt's overall clock: the attempt is
-  // marked with the moment, and the deadline (start plus limit, see
-  // routes/public.ts) stands still while the mark is set. Sharing again
-  // moves each paused attempt's start forward by the span it waited and
-  // clears the mark, so no time is lost to the pause. Attempts of a quiz
-  // without an overall limit carry the mark too; it changes nothing there.
-  if (set.status === 'draft' && quiz.status === 'published')
+  // Closing the link (stop sharing, or archiving a shared quiz) pauses every
+  // open attempt's overall clock: the attempt is marked with the moment, and
+  // the deadline (start plus limit, see routes/public.ts) stands still while
+  // the mark is set. Opening it again (sharing, or restoring) moves each
+  // paused attempt's start forward by the span it waited and clears the
+  // mark, so no time is lost to the pause. Attempts of a quiz without an
+  // overall limit carry the mark too; it changes nothing there.
+  const wasOpen = quiz.status === 'published' && !Number(quiz.archived)
+  const willOpen = (set.status ?? quiz.status) === 'published' && !(set.archived ?? !!Number(quiz.archived))
+  if (wasOpen && !willOpen)
     await DB.Update.table('responses')
       .set({ pausedAt: now() })
       .where('responses.quizId', quiz.id)
       .and('responses.status', 'open')
       .and('responses.pausedAt', null)
       .run()
-  if (set.status === 'published' && quiz.status === 'draft') {
+  if (!wasOpen && willOpen) {
     const open = await DB.from('responses').where('responses.quizId', quiz.id).and('responses.status', 'open').array()
     const t = now()
     for (const r of open as any[]) {
@@ -339,7 +353,7 @@ quizzes.patch('/:id', async (c) => {
   if (release) set.resultsReleasedAt = now()
   if (set.showResults === false && was) set.resultsReleasedAt = null
   // What a list shows of the quiz counts as an edit; a switch does not.
-  if ('title' in set || 'description' in set || 'icon' in set) set.updatedAt = now()
+  if ('title' in set || 'description' in set || 'icon' in set || 'color' in set) set.updatedAt = now()
   if (Object.keys(set).length) await DB.Update.table('quizzes').set(set).where('quizzes.id', quiz.id).run()
   const told = release ? (await tellWaiting({ ...quiz, ...set }, siteOf(c))).told : undefined
   return c.json({ ...(await fullQuiz(Number(quiz.id))), ...(release ? { told } : {}) })
@@ -581,6 +595,7 @@ quizzes.post('/:id/duplicate', async (c) => {
       prompt: s.prompt,
       description: s.description,
       icon: s.icon,
+      color: s.color,
       shuffleQuestions: s.shuffleQuestions,
       shuffleOptions: s.shuffleOptions,
       timeMode: s.timeMode,
@@ -590,6 +605,7 @@ quizzes.post('/:id/duplicate', async (c) => {
       showHints: s.showHints,
       aiCheck: s.aiCheck,
       aiEssay: s.aiEssay,
+      feedback: s.feedback,
     })
     .run()
   const copy = Number(r.lastInsertRowid)

@@ -70,6 +70,8 @@ export function settingsOf(q: any) {
     description: q.description ?? null,
     icon: q.icon ?? null,
     image: coverUrl(Number(q.id), q.image),
+    // "#rrggbb", or null for the palette color the id picks.
+    color: typeof q.color === 'string' && q.color ? q.color : null,
     shuffleQuestions: !!Number(q.shuffleQuestions),
     shuffleOptions: !!Number(q.shuffleOptions),
     timeMode: mode as 'none' | 'question' | 'overall',
@@ -79,6 +81,8 @@ export function settingsOf(q: any) {
     showResults: !!Number(q.showResults),
     // A row from before the column has no value; the column's default is on.
     showHints: q.showHints == null ? true : !!Number(q.showHints),
+    // "each": an answer is checked when it is confirmed; "end": when the quiz is finished.
+    feedback: (q.feedback === 'end' ? 'end' : 'each') as 'each' | 'end',
     resultsReleasedAt: q.resultsReleasedAt == null ? null : Number(q.resultsReleasedAt),
     aiCheck: !!Number(q.aiCheck),
     aiEssay: !!Number(q.aiEssay),

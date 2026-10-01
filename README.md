@@ -4,7 +4,7 @@ QuizApp turns a teacher's own material into a quiz. A teacher drops a module (a 
 
 It is an open platform with no classes: anyone can make a quiz, and anyone with the link can answer it.
 
-QuizApp is Kyle Cyrus Obille's solo entry to the RAITE 2026 AI in Education Hackathon (PSITE Central Luzon, sponsored by LIVRO).
+QuizApp is BPC Competitors' entry to the RAITE 2026 AI in Education Hackathon (PSITE Central Luzon, sponsored by LIVRO).
 
 - Live: [quiz.okyle.dev](https://quiz.okyle.dev)
 - Architecture diagram: [docs/architecture.png](docs/architecture.png)
@@ -267,6 +267,6 @@ silid/
 
 ## Credits
 
-Built by Kyle Cyrus Obille ([okyle.dev](https://okyle.dev)) for the RAITE 2026 AI in Education Hackathon, PSITE Central Luzon, sponsored by LIVRO.
+Built by BPC Competitors for the RAITE 2026 AI in Education Hackathon, PSITE Central Luzon, sponsored by LIVRO. The code and the site are kept at [okyle.dev](https://okyle.dev).
 
 Built on Vue, Vite, Hono, unpdf, pdf-lib, @napi-rs/canvas, nodemailer and uqr. Icons from Material Symbols (Google, Apache 2.0); a quiz's own icon from any set on Iconify. Pictures on questions come from the teacher, from the module, or from Wikimedia Commons under each file's own license, shown with its author. Type in DM Sans and Google Sans Flex. The AI is Google's Gemini and Gemma models through the Gemini API.

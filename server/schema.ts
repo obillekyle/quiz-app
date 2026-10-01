@@ -56,6 +56,10 @@ export const quizzes = table("quizzes", {
   description: Field.Text(true),
   icon: Field.Varchar(80, null),
   image: Field.Varchar(500, null),
+  // The quiz's color ("#2f6fdb", lowercase): its card, its square in the
+  // sidebar and the accent of its page for respondents. Null takes the color
+  // the id picks from the palette (web/src/composables/color.ts).
+  color: Field.Varchar(7, null),
   shuffleQuestions: Field.Bool(false),
   shuffleOptions: Field.Bool(false),
   // No limit, seconds for each question, or seconds for the whole quiz.
@@ -75,6 +79,11 @@ export const quizzes = table("quizzes", {
   // 04:10: Practice shows answers and hints and allows retakes; Graded holds
   // results, hides hints and allows one attempt per browser).
   showHints: Field.Bool(true),
+  // When an answer is checked and shown (Kyle, 2026-10-02): "each" after the
+  // respondent confirms it, locked from then on; "end" when the quiz is
+  // finished, changeable until then. Practice is each; Test and Graded are
+  // end (Graded also holds the results).
+  feedback: Field.Enum(["each", "end"] as const, "each"),
   ...Field.Timestamps(),
 })
 export const quizzesShareCode = Field.Unique(quizzes.shareCode)

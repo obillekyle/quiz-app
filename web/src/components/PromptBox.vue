@@ -221,11 +221,16 @@ defineExpose({ clear, focus, fill })
     class="box"
     :data-compact="compact || undefined"
     :data-dragging="dragging || undefined"
+    :data-busy="busy || undefined"
     @submit.prevent="send"
     @dragover.prevent="dragging = true"
     @dragleave.self="dragging = false"
     @drop.prevent="onDrop"
   >
+    <!-- The ring that turns while the AI works, and the glow outside the
+         box; the resting ring is the box's own ::before. -->
+    <i class="ring" aria-hidden="true" />
+    <i class="glow" aria-hidden="true" />
     <textarea
       ref="field"
       v-model="text"
@@ -298,12 +303,29 @@ defineExpose({ clear, focus, fill })
 </template>
 
 <style scoped>
+/* The ring's angle, registered so it can be animated. */
+@property --angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
 .box {
+  --bw: 2px;
+  --ring: conic-gradient(
+    from var(--angle),
+    var(--accent),
+    var(--student),
+    #ef6c00,
+    var(--accent)
+  );
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 8px;
   padding: 16px 16px 12px;
-  border: 2px solid var(--ink);
+  /* The line is drawn by the ring below; the border keeps the box's size. */
+  border: var(--bw) solid transparent;
   border-radius: var(--radius-xl);
   background: var(--surface);
   box-shadow: var(--shadow-sm);
@@ -311,8 +333,82 @@ defineExpose({ clear, focus, fill })
     border-color var(--fast),
     box-shadow var(--fast);
 
+  /* The brand's three colors around the edge, masked to the border's own
+     ring: at 55% at rest, whole when the box has focus. */
+  &::before,
+  .ring {
+    content: "";
+    position: absolute;
+    inset: calc(-1 * var(--bw));
+    z-index: 0;
+    padding: var(--bw);
+    border-radius: inherit;
+    background: var(--ring);
+    mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+  &::before {
+    opacity: 0.55;
+    transition: opacity var(--fast) var(--ease);
+  }
+  &:focus-within::before {
+    opacity: 1;
+  }
+  /* While the AI works the ring turns, once every 3 s (the one repeating
+     motion here: it marks work going on), and a glow breathes outside the
+     box. The turning ring is its own layer, faded in and out over 300 ms,
+     and paused rather than removed when the work ends, so it fades from
+     wherever it was rather than snapping to the top. */
+  .ring {
+    opacity: 0;
+    animation: turn 3s linear infinite paused;
+    transition: opacity 300ms var(--ease);
+  }
+  &[data-busy] .ring {
+    opacity: 1;
+    animation-play-state: running;
+  }
+  /* The glow: 35% of the accent, breathing between 25% and 45% over 2 s.
+     The breathing is on the pseudo and the 300 ms fade on the element, so
+     the fade starts from the breath's own value rather than snapping (a
+     transition does not start from an animated value). Paused, not
+     removed, when the work ends. Under reduced motion the breath is over
+     at once and the 35% holds. */
+  .glow {
+    position: absolute;
+    inset: calc(-1 * var(--bw));
+    z-index: -1;
+    border-radius: inherit;
+    opacity: 0;
+    transition: opacity 300ms var(--ease);
+    pointer-events: none;
+
+    &::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      box-shadow: 0 0 24px color-mix(in srgb, var(--accent) 45%, transparent);
+      opacity: 0.78;
+      animation: breathe 2s ease-in-out infinite paused;
+    }
+  }
+  &[data-busy] .glow {
+    opacity: 1;
+
+    &::before {
+      animation-play-state: running;
+    }
+  }
+  > :not(.ring, .glow) {
+    position: relative;
+    z-index: 1;
+  }
+
   &:focus-within {
-    border-color: var(--accent);
     box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 15%, transparent);
   }
 
@@ -320,11 +416,16 @@ defineExpose({ clear, focus, fill })
     border-style: dashed;
     border-color: var(--accent);
     background: color-mix(in srgb, var(--accent) 5%, var(--surface));
+
+    &::before {
+      opacity: 0;
+    }
   }
 
   &[data-compact] {
+    --bw: 1.5px;
     padding: 10px 10px 8px 14px;
-    border-width: 1.5px;
+    border-width: var(--bw);
     border-radius: var(--radius-xl);
 
     textarea {
@@ -516,6 +617,32 @@ textarea {
       position: absolute;
       inset: -10px;
     }
+  }
+}
+
+/* Dark: the same three stops, each a quarter toward white, as the tokens
+   lighten the accent. */
+:root[data-theme="dark"] .box {
+  --ring: conic-gradient(
+    from var(--angle),
+    color-mix(in srgb, var(--accent) 75%, white),
+    color-mix(in srgb, var(--student) 75%, white),
+    color-mix(in srgb, #ef6c00 75%, white),
+    color-mix(in srgb, var(--accent) 75%, white)
+  );
+}
+@keyframes turn {
+  to {
+    --angle: 360deg;
+  }
+}
+@keyframes breathe {
+  from,
+  to {
+    opacity: 0.56;
+  }
+  50% {
+    opacity: 1;
   }
 }
 </style>

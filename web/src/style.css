@@ -15,11 +15,10 @@
     box-sizing: border-box;
   }
 
-  /* The scrollbar's room is kept on every page, so the bar's icons do not
-     move 10px between pages that scroll and pages that do not. */
-  html {
-    scrollbar-gutter: stable;
-  }
+  /* The document itself never scrolls inside the app: AppLayout's content
+     column does, and keeps its own scrollbar gutter. A gutter reserved on
+     the document showed as an empty strip on every page that scrolls in a
+     column of its own (the builder, the overview). */
 
   body {
     margin: 0;
@@ -52,8 +51,10 @@
     *::before,
     *::after {
       animation-duration: 0.01ms !important;
+      animation-delay: 0s !important;
       animation-iteration-count: 1 !important;
       transition-duration: 0.01ms !important;
+      transition-delay: 0s !important;
       scroll-behavior: auto !important;
     }
   }

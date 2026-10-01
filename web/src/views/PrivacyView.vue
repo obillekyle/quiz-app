@@ -26,9 +26,10 @@ onUnmounted(() => {
       <h1>Privacy policy</h1>
       <p class="dated">Last updated 2026-10-02</p>
       <p>
-        QuizApp is run by Kyle Cyrus Obille, an individual, and was built for
-        the RAITE 2026 AI in Education Hackathon. It is free, and nothing in it
-        is sold, shown to advertisers, or shared beyond the services named here.
+        QuizApp is run by Kyle Cyrus Obille, an individual, and was built by BPC
+        Competitors for the RAITE 2026 AI in Education Hackathon. It is free,
+        and nothing in it is sold, shown to advertisers, or shared beyond the
+        services named here.
       </p>
 
       <h2>What is stored</h2>

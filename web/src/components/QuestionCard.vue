@@ -552,6 +552,80 @@ function addAccepted() {
   }
 }
 
+/* ---- arriving ----
+   The draft's cards come one after another, 60 ms apart (the stagger capped
+   at eight so a long quiz is not a long wait); a card the chat changed
+   flashes its border to the accent and back over 1.2 s, once; a card the
+   chat added slides into its place. In each case the card reveals top to
+   bottom, 40 ms a part: header, prompt, options, the rest. The attributes
+   and `--i` come from the list. */
+.qcard[data-rise] {
+  --arrive: calc(min(var(--i, 0), 8) * 60ms);
+  animation: rise-in 240ms var(--ease-emphasized-decelerate) both;
+  animation-delay: var(--arrive);
+}
+/* The keyframes name only the middle, so the border ends on whatever the
+   card's own rules say (a missing quote keeps its red). */
+.qcard[data-changed] {
+  --arrive: 0ms;
+  animation: flash-border 1.2s var(--ease) both;
+}
+.qcard[data-new] {
+  --arrive: 0ms;
+  animation: slide-in 240ms var(--ease-emphasized-decelerate) both;
+}
+.qcard[data-rise] > *,
+.qcard[data-changed] > *,
+.qcard[data-new] > * {
+  animation: part-in 200ms var(--ease-emphasized-decelerate) both;
+  animation-delay: calc(var(--arrive, 0ms) + var(--k, 0) * 40ms);
+}
+.qcard > :nth-child(2) {
+  --k: 1;
+}
+.qcard > :nth-child(3) {
+  --k: 2;
+}
+.qcard > :nth-child(4) {
+  --k: 3;
+}
+.qcard > :nth-child(5) {
+  --k: 4;
+}
+.qcard > :nth-child(6) {
+  --k: 5;
+}
+.qcard > :nth-child(7) {
+  --k: 6;
+}
+.qcard > :nth-child(n + 8) {
+  --k: 7;
+}
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    translate: 0 8px;
+  }
+}
+@keyframes slide-in {
+  from {
+    opacity: 0;
+    translate: 0 24px;
+  }
+}
+@keyframes part-in {
+  from {
+    opacity: 0;
+    translate: 0 6px;
+  }
+}
+@keyframes flash-border {
+  15%,
+  60% {
+    border-color: var(--accent);
+  }
+}
+
 header {
   display: flex;
   flex-wrap: wrap;
@@ -617,6 +691,7 @@ select {
   width: 30px;
   height: 30px;
   border: 0;
+  padding: 0;
   border-radius: var(--radius-md);
   background: none;
   color: var(--muted);
@@ -790,7 +865,9 @@ input {
   }
 
   b {
-    padding-top: 5px;
+    display: flex;
+    align-items: center;
+    height: 30px;
     font-size: 14px;
   }
 }
@@ -802,7 +879,10 @@ input {
   flex: none;
   width: 22px;
   height: 22px;
-  margin-top: 5px;
+  /* (30 - 22) / 2: centered on the option field beside it. */
+  margin-top: 4px;
+  /* A button's own 6px side padding left a 6px cell for the 16px check. */
+  padding: 0;
   border: 2px solid color-mix(in srgb, var(--ink) 30%, transparent);
   border-radius: 50%;
   background: var(--surface);
@@ -811,13 +891,47 @@ input {
 
   &[aria-pressed="true"] {
     border-color: var(--good);
+  }
+  /* The fill is its own layer under the check, so it can grow into the
+     ring (from 0.6, 150 ms) while the ring holds still; the check then
+     sweeps in from the left. The choice is seen to take. */
+  &::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
     background: var(--good);
+    scale: 0;
+  }
+  &[aria-pressed="true"]::before {
+    scale: 1;
+    animation: mark-fill 150ms var(--ease) both;
+  }
+  /* Both ends named as inset(): the element's own clip-path is none, which
+     does not interpolate, so a from-only keyframe would flip rather than
+     sweep. `backwards` leaves the computed value at none once it has run. */
+  &[aria-pressed="true"] svg {
+    position: relative;
+    animation: mark-draw 150ms var(--ease) backwards;
   }
   /* The ring stays 22px; the finger gets 44. */
   &::after {
     content: "";
     position: absolute;
     inset: -11px;
+  }
+}
+@keyframes mark-fill {
+  from {
+    scale: 0.6;
+  }
+}
+@keyframes mark-draw {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
   }
 }
 
@@ -925,6 +1039,7 @@ input {
     width: 20px;
     height: 20px;
     border: 0;
+    padding: 0;
     border-radius: 50%;
     background: none;
     cursor: pointer;
@@ -1080,10 +1195,10 @@ input {
     min-height: 44px;
   }
   .options b {
-    padding-top: 12px;
+    height: 44px;
   }
   .mark {
-    margin-top: 12px;
+    margin-top: 11px;
   }
   /* The chip's cross stays 20px; its hit area grows to 44. */
   .accepted li button {

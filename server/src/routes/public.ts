@@ -43,6 +43,9 @@ function rulesOf(q: any) {
     // Off, the question's "Show hint" (its topic and page) is not offered.
     hints: flag(q.showHints, true),
     ai: { check: flag(q.aiCheck, true), essay: flag(q.aiEssay, true) },
+    // When an answer is checked: "each" as it is confirmed, locked from then
+    // on; "end" when the attempt finishes, changeable until then.
+    feedback: (q.feedback === 'end' ? 'end' : 'each') as 'each' | 'end',
   }
 }
 type Rules = ReturnType<typeof rulesOf>
@@ -68,6 +71,8 @@ respond.get('/q/:code', async (c) => {
       icon: q.icon ? String(q.icon) : null,
       // The cover, shown instead of the icon; its address needs no sign-in.
       image: coverUrl(Number(q.id), q.image),
+      // The page's accent; null leaves the student purple.
+      color: typeof q.color === 'string' && q.color ? String(q.color) : null,
       timeMode: rules.timeMode,
       timeLimit: rules.timeLimit,
       allowRetake: rules.allowRetake,
@@ -75,6 +80,7 @@ respond.get('/q/:code', async (c) => {
       showHints: rules.hints,
       aiCheck: rules.ai.check,
       aiEssay: rules.ai.essay,
+      feedback: rules.feedback,
     },
     // In the quiz's own order; an attempt's layout says the order it is shown in.
     questions: full.questions.map((x) => ({
@@ -321,6 +327,19 @@ const saved = (q: QuestionDraft & { id: number }, a: Given) => ({
   text: a.text,
 })
 
+/**
+ * An answer on a quiz checked at the end, while the attempt is open: the
+ * pick as it was saved, so a reload or Back shows it chosen and still
+ * changeable, and nothing about how it scored.
+ */
+const pick = (q: QuestionDraft & { id: number }, a: Given) => ({
+  questionId: q.id,
+  pick: true as const,
+  points: q.points,
+  choice: a.choice,
+  text: a.text,
+})
+
 const graded = (row: any): Given & Graded => ({
   choice: row.choice == null ? null : Number(row.choice),
   text: row.text ?? null,
@@ -337,7 +356,8 @@ const graded = (row: any): Given & Graded => ({
  * feedback, in the order the attempt is shown. Once the attempt is finished,
  * the questions it skipped come too, with their answers, so the review shows
  * the whole quiz. While the results are held, the answers carry only what
- * was given, and the score stays out.
+ * was given, and the score stays out. On a quiz checked at the end, an open
+ * attempt's answers are picks: what was chosen or typed, nothing judged.
  */
 respond.get('/attempts/:id', async (c) => {
   const r = await ownAttempt(Number(c.req.param('id')), tokenOf(c))
@@ -346,6 +366,7 @@ respond.get('/attempts/:id', async (c) => {
   const rows = await DB.from('answers').where('answers.responseId', r.id).array()
   const given = new Map(rows.map((a: any) => [Number(a.questionId), a]))
   const finished = r.status === 'finished'
+  const picking = rules.feedback === 'end' && !finished
   const { order, options } = servedOrder(readLayout(r.layout), full.questions)
   const byId = new Map(full.questions.map((x) => [x.id, x]))
   const shown = order.map((id) => byId.get(id)!)
@@ -355,7 +376,7 @@ respond.get('/attempts/:id', async (c) => {
     name: String(r.name),
     section: r.section ? String(r.section) : null,
     held: !rules.results,
-    score: rules.results ? Number(r.score) : null,
+    score: rules.results && !picking ? Number(r.score) : null,
     total: Number(r.total),
     rating: r.rating == null ? null : Number(r.rating),
     order,
@@ -363,16 +384,21 @@ respond.get('/attempts/:id', async (c) => {
     timeLeft: timeLeft(r, rules),
     notify: rules.results ? null : (r.notifyEmail ?? null),
     // A question removed since it was answered drops out.
-    answers: rules.results
+    answers: picking
       ? shown.flatMap((x) => {
           const a = given.get(x.id)
-          if (a) return [feedback(x, graded(a))]
-          return finished ? [feedback(x, none, true)] : []
+          return a ? [pick(x, graded(a))] : []
         })
-      : shown.flatMap((x) => {
-          const a = given.get(x.id)
-          return a ? [saved(x, graded(a))] : []
-        }),
+      : rules.results
+        ? shown.flatMap((x) => {
+            const a = given.get(x.id)
+            if (a) return [feedback(x, graded(a))]
+            return finished ? [feedback(x, none, true)] : []
+          })
+        : shown.flatMap((x) => {
+            const a = given.get(x.id)
+            return a ? [saved(x, graded(a))] : []
+          }),
   })
 })
 
@@ -386,6 +412,10 @@ respond.post('/attempts/:id/answers', async (c) => {
   const r = await ownAttempt(Number(c.req.param('id')), tokenOf(c, body))
   if (r.status === 'finished') throw new HTTPException(409, { message: 'This attempt is already finished.' })
   const [full, quiz] = await Promise.all([fullQuiz(Number(r.quizId)), quizOf(r)])
+  // The page cannot load a closed quiz; a browser holding its token could
+  // still post here, so the link's state is checked on every answer.
+  if (quiz.status !== 'published' || Number(quiz.archived))
+    return c.json({ error: 'This quiz is closed, so this answer was not saved. Ask the quiz maker.', field: 'closed' }, 409)
   const rules = rulesOf(quiz)
   const q = full.questions.find((x) => x.id === Number(body.questionId))
   if (!q) throw new HTTPException(404, { message: 'This question is not in the quiz.' })

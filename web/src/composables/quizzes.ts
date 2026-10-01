@@ -1,5 +1,6 @@
 import { computed, effectScope, watch } from "vue"
 import { useAuth } from "./auth"
+import { PALETTE } from "./color"
 import { useFetch } from "./fetch"
 
 /** A quiz's Settings page, as every reader of a quiz gets it. */
@@ -9,6 +10,8 @@ export type QuizSettings = {
   icon: string | null
   /** The cover's address, shown instead of the icon. */
   image: string | null
+  /** "#rrggbb"; null takes the palette color the id picks. */
+  color: string | null
   shuffleQuestions: boolean
   shuffleOptions: boolean
   timeMode: "none" | "question" | "overall"
@@ -67,16 +70,12 @@ export function useQuizzes() {
   return shared
 }
 
-/** The card colors from the QuizApp design, one per quiz, steady across visits. */
-const COLORS = [
-  "#6b276c",
-  "#2f6fdb",
-  "#c62828",
-  "#ef6c00",
-  "#2e7d32",
-  "#5c3715",
-]
-export const quizColor = (id: number) => COLORS[(id - 1) % COLORS.length]!
+/**
+ * A quiz's color: the one its settings chose, else one of the palette by its
+ * id, steady across visits.
+ */
+export const quizColor = (quiz: { id: number; color?: string | null }) =>
+  quiz.color ?? PALETTE[(quiz.id - 1) % PALETTE.length]!.hex
 
 const relative = new Intl.RelativeTimeFormat("en", { numeric: "auto" })
 

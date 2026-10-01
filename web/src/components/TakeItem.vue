@@ -108,10 +108,28 @@ const glue = (t: string | null | undefined) =>
   )
 
 const points = (n: number) => `${n} ${n === 1 ? "point" : "points"}`
+
+/**
+ * The feedback arrived while this question was on screen, as against a
+ * question mounted already graded (the review, or Back to an answered one).
+ * Only the first case is a reveal, and only a reveal animates.
+ */
+const reveal = ref(false)
+watch(f, (now, before) => {
+  if (now && !before) reveal.value = true
+})
+watch(
+  () => q.value.id,
+  () => (reveal.value = false),
+)
 </script>
 
 <template>
-  <article class="item">
+  <article
+    class="item"
+    :data-reveal="reveal || undefined"
+    :style="{ '--n': choices ? shown.length : 0 }"
+  >
     <div class="ask">
       <p class="meta">
         <span>{{ KIND_LABEL[q.kind] }} · {{ points(q.points) }}</span>
@@ -151,11 +169,12 @@ const points = (n: number) => `${n} ${n === 1 ? "point" : "points"}`
 
     <!-- Multiple choice and true or false: a tap answers. -->
     <ul v-if="choices" class="options" stack>
-      <li v-for="(c, at) in shown" :key="c.i">
+      <li v-for="(c, at) in shown" :key="c.i" :style="{ '--i': at }">
         <button
           type="button"
           class="option"
           :data-state="state(c.i)"
+          :data-picked="(f && c.i === f.choice) || undefined"
           :disabled="!!f || busy"
           :aria-label="
             f
@@ -362,11 +381,16 @@ const points = (n: number) => `${n} ${n === 1 ? "point" : "points"}`
   cursor: pointer;
   transition:
     background var(--fast) var(--ease),
-    border-color var(--fast) var(--ease);
+    border-color var(--fast) var(--ease),
+    scale 100ms var(--ease);
 
   &:hover:not(:disabled) {
     border-color: color-mix(in srgb, var(--accent) 45%, transparent);
     background: color-mix(in srgb, var(--accent) 5%, var(--surface));
+  }
+  /* Pressed: the tile gives under the finger, so the tap is seen to land. */
+  &:active:not(:disabled) {
+    scale: 0.98;
   }
   /* Inside the tile: the option group's `contain: content` clips anything outside. */
   &:focus-visible {
@@ -378,6 +402,10 @@ const points = (n: number) => `${n} ${n === 1 ? "point" : "points"}`
   }
   &[data-state="right"] {
     background: var(--good-soft);
+  }
+  /* A wrong pick reads first, the answer 80 ms after: two facts in order. */
+  &[data-state="right"]:not([data-picked]) {
+    transition-delay: 80ms;
   }
   &[data-state="wrong"] {
     background: var(--bad-soft);
@@ -537,6 +565,48 @@ const points = (n: number) => `${n} ${n === 1 ? "point" : "points"}`
     font-size: 12px;
     font-style: normal;
     color: var(--muted);
+  }
+}
+
+/* The reveal, in reading order: the verdict's chip, then why each option is
+   right or wrong (one after another, down the list), then the explanation,
+   then the sentence it rests on. Each rises 8px into place; a skipped
+   animation leaves the element where its own rules put it. */
+.item[data-reveal] {
+  .got {
+    animation: fade-in var(--fast) var(--ease) both;
+  }
+  .body small,
+  .given,
+  .accepted,
+  .verdict,
+  .why > p,
+  .why blockquote {
+    animation: rise-in 200ms var(--ease-emphasized-decelerate) both;
+  }
+  .body small {
+    animation-delay: calc(var(--i, 0) * 40ms);
+  }
+  .accepted,
+  .verdict {
+    animation-delay: 40ms;
+  }
+  .why > p {
+    animation-delay: calc(var(--n, 0) * 40ms);
+  }
+  .why blockquote {
+    animation-delay: calc((var(--n, 0) + 1) * 40ms);
+  }
+}
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    translate: 0 8px;
+  }
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
   }
 }
 

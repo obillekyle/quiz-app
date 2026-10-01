@@ -21,10 +21,13 @@ function stored(): Theme {
 }
 
 const theme = ref<Theme>(stored())
+/** Whether the dark tokens are on right now, for a color computed in script. */
+export const isDark = ref(false)
 
 function apply() {
   const on =
     theme.value === "dark" || (theme.value === "system" && dark.matches)
+  isDark.value = on
   if (on) document.documentElement.setAttribute("data-theme", "dark")
   else document.documentElement.removeAttribute("data-theme")
 }

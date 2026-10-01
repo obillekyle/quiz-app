@@ -8,6 +8,13 @@ import LogoMark from "../components/LogoMark.vue"
 import TakeItem from "../components/TakeItem.vue"
 import { ApiError } from "../composables/api"
 import {
+  DARK_SURFACE,
+  inkFor,
+  LIGHT_SURFACE,
+  readableOn,
+} from "../composables/color"
+import { isDark } from "../composables/theme"
+import {
   dropAttempt,
   dropPace,
   countVisit,
@@ -77,6 +84,17 @@ const held = ref<Held | null>(heldAttempt(code))
 const state = ref<Attempt | null>(null)
 
 const info = computed(() => quiz.value?.quiz)
+// The quiz's own color as the page's accent, set on the frame as the student
+// tokens so every button, ring, bar and word in the accent below follows.
+// The color is first moved to read as text on the theme's surface (the
+// palette's orange is 3.1:1 on white as it is; the dark tokens lighten every
+// accent the same way), and the ink on it is picked from the color shown.
+const tint = computed(() => {
+  const c = info.value?.color
+  if (!c) return undefined
+  const shown = readableOn(c, isDark.value ? DARK_SURFACE : LIGHT_SURFACE)
+  return { "--student": shown, "--student-ink": inkFor(shown) }
+})
 const timeMode = computed(() => info.value?.timeMode ?? "none")
 const limitMs = computed(() => (info.value?.timeLimit ?? 0) * 1000)
 const allowRetake = computed(() => info.value?.allowRetake ?? true)
@@ -508,6 +526,43 @@ const graded = computed(() =>
   (state.value?.answers ?? []).flatMap((f) => (f.held ? [] : [f])),
 )
 const score = computed(() => state.value?.score ?? 0)
+
+/**
+ * The score on screen counts from 0 to the result over 600 ms when the
+ * finished page first appears (not on the way back from the review), so the
+ * number reads as arrived at. The count keeps the result's own precision,
+ * whole or one decimal, so the figure's width holds while it runs. Under
+ * reduced motion it is the result at once.
+ */
+const shownScore = ref(0)
+/** The finished page was just arrived at: the one time its pieces move. */
+const arrived = ref(false)
+let counting = 0
+function countTo(target: number) {
+  cancelAnimationFrame(counting)
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    shownScore.value = target
+    return
+  }
+  const t0 = performance.now()
+  const step = (t: number) => {
+    const k = Math.min(1, (t - t0) / 600)
+    shownScore.value = target * (1 - (1 - k) ** 3)
+    if (k < 1) counting = requestAnimationFrame(step)
+    else shownScore.value = target
+  }
+  counting = requestAnimationFrame(step)
+}
+const fmtCount = (v: number) =>
+  Number.isInteger(score.value) ? String(Math.round(v)) : v.toFixed(1)
+watch(stage, (now, before) => {
+  arrived.value = now === "done" && before !== "review"
+  if (now === "done") {
+    if (arrived.value) countTo(score.value)
+    else shownScore.value = score.value
+  }
+})
+onBeforeUnmount(() => cancelAnimationFrame(counting))
 const pct = computed(() =>
   state.value && state.value.total ? score.value / state.value.total : 0,
 )
@@ -658,7 +713,7 @@ const initial = (name: string) => (name.trim()[0] ?? "?").toUpperCase()
 
 <template>
   <div class="take">
-    <div class="frame">
+    <div class="frame" :style="tint">
       <header class="bar">
         <RouterLink to="/" class="brand" aria-label="QuizApp"
           ><LogoMark :size="30"
@@ -826,18 +881,23 @@ const initial = (name: string) => (name.trim()[0] ?? "?").toUpperCase()
               answered.
             </p>
           </section>
-          <TakeItem
-            :question="current"
-            :number="at + 1"
-            :feedback="byQ[current.id]"
-            :busy="busy"
-            :options="optionsOf(current.id)"
-            :held="state?.held"
-            :show-hints="showHints"
-            :ai-check="aiCheck"
-            :ai-essay="aiEssay"
-            @answer="answer"
-          />
+          <!-- One card leaves and the next arrives: a new question, not an
+               edit of the old one. -->
+          <Transition name="q" mode="out-in">
+            <TakeItem
+              :key="current.id"
+              :question="current"
+              :number="at + 1"
+              :feedback="byQ[current.id]"
+              :busy="busy"
+              :options="optionsOf(current.id)"
+              :held="state?.held"
+              :show-hints="showHints"
+              :ai-check="aiCheck"
+              :ai-essay="aiEssay"
+              @answer="answer"
+            />
+          </Transition>
           <p v-if="answerError" class="error" role="alert">{{ answerError }}</p>
         </template>
 
@@ -921,7 +981,7 @@ const initial = (name: string) => (name.trim()[0] ?? "?").toUpperCase()
               <h1>{{ headline }}</h1>
               <p>You scored</p>
               <strong class="big" :data-passed="passed || undefined"
-                >{{ fmt(score) }} / {{ fmt(state.total)
+                >{{ fmtCount(shownScore) }} / {{ fmt(state.total)
                 }}<small> points</small></strong
               >
               <p class="muted">
@@ -948,7 +1008,7 @@ const initial = (name: string) => (name.trim()[0] ?? "?").toUpperCase()
               </p>
             </section>
           </template>
-          <section class="card rate">
+          <section class="card rate" :data-arrive="arrived || undefined">
             <fieldset>
               <legend>How much did you enjoy this quiz?</legend>
               <div class="faces">
@@ -957,6 +1017,7 @@ const initial = (name: string) => (name.trim()[0] ?? "?").toUpperCase()
                   :key="i"
                   type="button"
                   class="face"
+                  :style="{ '--i': i }"
                   :aria-pressed="state.rating === i + 1"
                   :aria-label="face.label"
                   :title="face.label"
@@ -1021,7 +1082,7 @@ const initial = (name: string) => (name.trim()[0] ?? "?").toUpperCase()
             <strong>{{ fmt(score) }} / {{ fmt(state.total) }} points</strong>
           </div>
           <ol class="review">
-            <li v-for="(q, i) in questions" :key="q.id">
+            <li v-for="(q, i) in questions" :key="q.id" :style="{ '--i': i }">
               <TakeItem
                 :question="q"
                 :number="i + 1"
@@ -1386,7 +1447,8 @@ const initial = (name: string) => (name.trim()[0] ?? "?").toUpperCase()
   height: 100%;
   border-radius: var(--radius-sm);
   background: var(--accent);
-  transition: width 250ms var(--ease);
+  /* One bar filling, not two states: the width runs, 300 ms. */
+  transition: width 300ms var(--ease);
 }
 /* The clock: a small pill that turns to the warn color near the end and
    dims once an answer has stopped it. Never red, never pulsing. */
@@ -1426,6 +1488,23 @@ const initial = (name: string) => (name.trim()[0] ?? "?").toUpperCase()
   padding: 64px 0;
   text-align: center;
   color: var(--muted);
+}
+/* The question card: the old one fades out in 120 ms, the next fades in and
+   rises 12px over 200 ms. */
+.q-enter-active {
+  transition:
+    opacity 200ms var(--ease-emphasized-decelerate),
+    translate 200ms var(--ease-emphasized-decelerate);
+}
+.q-leave-active {
+  transition: opacity 120ms var(--ease-emphasized-accelerate);
+}
+.q-enter-from {
+  opacity: 0;
+  translate: 0 12px;
+}
+.q-leave-to {
+  opacity: 0;
 }
 
 .card {
@@ -1752,6 +1831,17 @@ const initial = (name: string) => (name.trim()[0] ?? "?").toUpperCase()
     color: var(--accent);
   }
 }
+/* The faces follow the score, left to right: the question comes after the result. */
+.rate[data-arrive] .face {
+  animation: pop-in 200ms var(--ease-emphasized-decelerate) both;
+  animation-delay: calc(var(--i, 0) * 40ms);
+}
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    scale: 0.6;
+  }
+}
 
 .row {
   display: flex;
@@ -1833,6 +1923,19 @@ const initial = (name: string) => (name.trim()[0] ?? "?").toUpperCase()
   margin: 0;
   padding: 0;
   list-style: none;
+
+  /* A list read top down: each row rises after the one above, the stagger
+     capped at ten rows so a long quiz is not a long wait. */
+  > li {
+    animation: rise-in 200ms var(--ease-emphasized-decelerate) both;
+    animation-delay: calc(min(var(--i, 0), 10) * 40ms);
+  }
+}
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    translate: 0 8px;
+  }
 }
 
 /* ---- the name ---- */

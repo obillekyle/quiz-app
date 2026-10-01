@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue"
+import { computed, onBeforeUnmount, reactive, ref, watch } from "vue"
 import { useRoute } from "vue-router"
 import ConfirmDialog from "../components/ConfirmDialog.vue"
 import QuizActions from "../components/QuizActions.vue"
@@ -72,6 +72,45 @@ const { data, error, loading, refresh } = useFetch<Overview>(
   () => `/quizzes/${id.value}/overview`,
 )
 const o = computed(() => data.value)
+
+/**
+ * The four numbers as shown: when they first arrive they count from 0 to
+ * their values over 500 ms, so they read as live counts rather than labels.
+ * A refresh writes the new values straight in; reduced motion does too.
+ */
+const shown = reactive({ views: 0, takers: 0, average: 0, best: 0 })
+let counting = 0
+watch(
+  o,
+  (now, before) => {
+    if (!now) return
+    cancelAnimationFrame(counting)
+    const target = {
+      views: now.views,
+      takers: now.takers,
+      average: now.average ?? 0,
+      best: now.best ?? 0,
+    }
+    if (before || matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      Object.assign(shown, target)
+      return
+    }
+    const t0 = performance.now()
+    const step = (t: number) => {
+      const k = Math.min(1, (t - t0) / 500)
+      const e = 1 - (1 - k) ** 3
+      shown.views = Math.round(target.views * e)
+      shown.takers = Math.round(target.takers * e)
+      shown.average = target.average * e
+      shown.best = target.best * e
+      if (k < 1) counting = requestAnimationFrame(step)
+      else Object.assign(shown, target)
+    }
+    counting = requestAnimationFrame(step)
+  },
+  { immediate: true },
+)
+onBeforeUnmount(() => cancelAnimationFrame(counting))
 
 const pct = (x: number | null) =>
   x == null ? "None yet" : `${Math.round(x * 100)}%`
@@ -250,6 +289,7 @@ const avatarColor = (name: string) =>
               :id="o.quiz.id"
               :icon="o.quiz.icon"
               :image="o.quiz.image"
+              :color="o.quiz.color"
               :title="o.quiz.title"
               :icon-size="36"
             />
@@ -371,24 +411,24 @@ const avatarColor = (name: string) =>
           <section class="sec stats" aria-label="Numbers">
             <div class="stat">
               <span>Views</span>
-              <strong>{{ o.views }}</strong>
+              <strong>{{ shown.views }}</strong>
             </div>
             <div class="stat">
               <span>Quiz takers</span>
-              <strong>{{ o.takers }}</strong>
+              <strong>{{ shown.takers }}</strong>
               <small v-if="o.open">plus {{ o.open }} still answering</small>
             </div>
             <div class="stat" :data-low="low || undefined">
               <span>Average score</span>
               <strong :data-none="o.average == null || undefined">{{
-                pct(o.average)
+                pct(o.average == null ? null : shown.average)
               }}</strong>
               <small v-if="low">Under 75% passing</small>
             </div>
             <div class="stat">
               <span>Highest</span>
               <strong :data-none="o.best == null || undefined">{{
-                pct(o.best)
+                pct(o.best == null ? null : shown.best)
               }}</strong>
             </div>
           </section>
@@ -427,7 +467,10 @@ const avatarColor = (name: string) =>
                 >
                   <div
                     class="bar"
-                    :style="{ height: d.n ? `${(d.n / peak) * 100}%` : '2px' }"
+                    :style="{
+                      height: d.n ? `${(d.n / peak) * 100}%` : '2px',
+                      '--i': i,
+                    }"
                     :data-zero="!d.n || undefined"
                   />
                   <span v-if="hovered === i" class="tip" role="tooltip"
@@ -904,6 +947,8 @@ const avatarColor = (name: string) =>
   strong {
     font: 650 28px/1.15 var(--font-heading);
     letter-spacing: -0.02em;
+    /* The count runs in place: every digit the same width. */
+    font-variant-numeric: tabular-nums;
 
     &[data-none] {
       padding-top: 8px;
@@ -954,6 +999,11 @@ const avatarColor = (name: string) =>
   width: min(100%, 22px);
   border-radius: var(--radius-sm) var(--radius-sm) 0 0;
   background: var(--chart);
+  /* The bars grow from the baseline in date order, 20 ms apart: the data
+     is drawn, left to right, as a count over days. */
+  transform-origin: bottom;
+  animation: grow-up 400ms var(--ease-emphasized-decelerate) both;
+  animation-delay: calc(var(--i, 0) * 20ms);
 
   &[data-zero] {
     background: color-mix(in srgb, var(--ink) 10%, transparent);
@@ -978,6 +1028,12 @@ const avatarColor = (name: string) =>
   justify-content: space-between;
   font-size: 12px;
   color: var(--muted);
+}
+
+@keyframes grow-up {
+  from {
+    scale: 1 0;
+  }
 }
 
 /* ---- most missed ---- */

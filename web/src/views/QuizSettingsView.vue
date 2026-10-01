@@ -8,8 +8,10 @@ import QuizHead from "../components/QuizHead.vue"
 import QuizThumb from "../components/QuizThumb.vue"
 import Switch from "../components/Switch.vue"
 import { api, ApiError } from "../composables/api"
+import { inkFor, PALETTE } from "../composables/color"
 import { useAction, useFetch } from "../composables/fetch"
 import {
+  quizColor,
   refreshQuizzes,
   releaseText,
   toldText,
@@ -83,8 +85,8 @@ function save(key: string, body: Record<string, unknown>) {
       )
       data.value = reply
       flash(key)
-      // The home cards and the sidebar show the name and the icon.
-      if ("title" in body || "icon" in body) refreshQuizzes()
+      // The home cards and the sidebar show the name, the icon and the color.
+      if ("title" in body || "icon" in body || "color" in body) refreshQuizzes()
       return reply
     } catch (e) {
       failure[key] = message(e)
@@ -264,6 +266,38 @@ const pictureError = computed(
     upload.error.value?.message ??
     uncover.error.value?.message,
 )
+
+// ---- the color --------------------------------------------------------------------
+/** The color being picked (null for the default), or undefined when none is on the way. */
+const picking = ref<string | null>()
+/** The quiz's setting as it stands on screen. */
+const chosen = computed(() =>
+  picking.value === undefined ? (quiz.value?.color ?? null) : picking.value,
+)
+/** The color in effect: the setting, else the palette's by id. */
+const color = computed(() =>
+  quizColor({ id: quiz.value?.id ?? 1, color: chosen.value }),
+)
+/** A color outside the palette is the custom swatch's. */
+const customOn = computed(
+  () => !!chosen.value && !PALETTE.some((p) => p.hex === chosen.value),
+)
+/** The check on a chosen swatch: a glyph, so white where it reaches 3:1. */
+const SWATCH_INK: Record<string, string> = Object.fromEntries(
+  PALETTE.map((p) => [p.hex, inkFor(p.hex, 3)]),
+)
+
+async function setColor(hex: string | null) {
+  if (hex === (quiz.value?.color ?? null)) return
+  picking.value = hex
+  await save("color", { color: hex })
+  picking.value = undefined
+}
+/** The native picker moves: the page follows it; the pick is saved when it closes. */
+const previewCustom = (e: Event) =>
+  (picking.value = (e.target as HTMLInputElement).value)
+const pickCustom = (e: Event) =>
+  setColor((e.target as HTMLInputElement).value.toLowerCase())
 
 // ---- the time limit ---------------------------------------------------------------
 type Mode = "none" | "question" | "overall"
@@ -551,6 +585,7 @@ const SWITCHES: Record<SwitchKey, { title: string; text: string }> = {
                   :id="quiz.id"
                   :icon="quiz.icon"
                   :image="quiz.image"
+                  :color="chosen"
                   :title="quiz.title"
                   :icon-size="40"
                 />
@@ -628,6 +663,65 @@ const SWITCHES: Record<SwitchKey, { title: string; text: string }> = {
                 :current="quiz.icon"
                 @pick="(icon) => save('picture', { icon })"
               />
+            </div>
+
+            <div class="tile">
+              <div class="tile-head">
+                <strong id="s-color">Color</strong>
+                <span v-if="saved === 'color'" class="saved" aria-hidden="true"
+                  ><Icon name="check" :size="16" /> Saved</span
+                >
+              </div>
+              <p class="hint">
+                Colors the quiz's card, its page for respondents and its square
+                in the sidebar.
+              </p>
+              <div class="swatches" role="group" aria-labelledby="s-color">
+                <button
+                  v-for="p in PALETTE"
+                  :key="p.hex"
+                  type="button"
+                  class="swatch"
+                  :aria-label="p.name"
+                  :aria-pressed="!customOn && color === p.hex"
+                  :style="{ '--c': p.hex, '--c-ink': SWATCH_INK[p.hex] }"
+                  @click="setColor(p.hex)"
+                >
+                  <Icon
+                    v-if="!customOn && color === p.hex"
+                    name="check"
+                    :size="20"
+                  />
+                </button>
+                <label
+                  class="swatch custom"
+                  :data-on="customOn || undefined"
+                  :style="{ '--c': color, '--c-ink': inkFor(color, 3) }"
+                >
+                  <input
+                    type="color"
+                    :value="color"
+                    :aria-label="
+                      customOn ? `Custom color, ${color}` : 'Custom color'
+                    "
+                    @input="previewCustom"
+                    @change="pickCustom"
+                  />
+                  <Icon v-if="customOn" name="check" :size="20" />
+                </label>
+                <button
+                  v-if="chosen"
+                  btn="quiet"
+                  type="button"
+                  class="reset"
+                  @click="setColor(null)"
+                >
+                  Use the default
+                </button>
+              </div>
+              <p v-if="failure.color" class="error" role="alert">
+                {{ failure.color }}
+              </p>
             </div>
 
             <label
@@ -1038,6 +1132,99 @@ textarea[field] {
   }
 }
 
+/* ---- the color: the palette's six, a custom one, and the way back ---- */
+/* Seven 44px targets touch (308px), so a 390px phone keeps them on one row
+   with the discs 8px apart; the quiet button wraps under them there. */
+.swatches {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 0;
+  /* The first disc on the heading's edge; its target reaches 4px into the padding. */
+  margin-left: -4px;
+}
+/* A 36px disc on a 44px target; the chosen one wears a ring in its own color. */
+.swatch {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--c-ink);
+  cursor: pointer;
+
+  &::before {
+    content: "";
+    position: absolute;
+    inset: 4px;
+    border-radius: 50%;
+    background: var(--c);
+    transition: box-shadow var(--fast) var(--ease);
+  }
+  &:hover::before {
+    box-shadow:
+      0 0 0 2px var(--surface),
+      0 0 0 4px color-mix(in srgb, var(--c) 45%, transparent);
+  }
+  &[aria-pressed="true"]::before,
+  &[data-on]::before {
+    box-shadow:
+      0 0 0 2px var(--surface),
+      0 0 0 4px var(--c);
+  }
+  &:focus-visible,
+  &:has(input:focus-visible) {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  > svg {
+    position: relative;
+    z-index: 1;
+  }
+}
+/* The custom swatch: a rainbow ring, around the chosen color once one is picked. */
+.swatch.custom {
+  &::before {
+    background: conic-gradient(
+      from 0deg,
+      #e53935,
+      #fdd835,
+      #43a047,
+      #1e88e5,
+      #8e24aa,
+      #e53935
+    );
+  }
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 9px;
+    border-radius: 50%;
+    background: var(--surface);
+  }
+  &[data-on]::after {
+    background: var(--c);
+  }
+  input {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    cursor: pointer;
+  }
+}
+.reset {
+  margin-left: 8px;
+  padding: 0 14px;
+  font-size: 14px;
+}
+
 /* ---- the time limit: a Material segmented button ---- */
 .time-row {
   display: flex;
@@ -1182,6 +1369,10 @@ textarea[field] {
   .preview {
     width: 100%;
     height: 120px;
+  }
+  /* Wrapped under the swatches, the button's label starts where the discs do. */
+  .reset {
+    margin-left: -10px;
   }
   .seg {
     display: flex;
