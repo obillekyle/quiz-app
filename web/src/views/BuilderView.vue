@@ -37,6 +37,10 @@ const keyed = (q: Question) => ({
 const loadError = ref("")
 const error = ref("")
 const working = ref<"" | "draft" | "chat" | "save">("")
+/** The AI is on it (a save is not): the chat box shows its working look. */
+const aiWorking = computed(
+  () => working.value === "draft" || working.value === "chat",
+)
 
 /**
  * The draft's cards, by key range: they rise in one after another, the way
@@ -80,12 +84,24 @@ function streamReply() {
     stream.value = null
     return
   }
-  const per = Math.min(18, 1600 / tokens.length)
   stream.value = { id: m.id, shown: 1, tokens }
-  const t0 = performance.now()
-  const step = (t: number) => {
+  // The pace is counted from the first frame drawn, not from here: the reply
+  // redraws every card first (125 to 170 ms on a two-core laptop), and the
+  // words due in that time landed in one lump, nine at once. The 1.6 s is
+  // counted from here, so the redraw comes out of a long reply's time. The
+  // clock is performance.now(): the frame's own timestamp is the time the
+  // frame was asked for, before the redraw.
+  const arrived = performance.now()
+  let t0 = 0
+  let per = 18
+  const step = () => {
     const st = stream.value
     if (!st || st.id !== m.id) return
+    const t = performance.now()
+    if (!t0) {
+      t0 = t
+      per = Math.max(0.01, Math.min(18, (1600 - (t - arrived)) / tokens.length))
+    }
     st.shown = Math.min(tokens.length, Math.floor((t - t0) / per) + 1)
     if (st.shown < tokens.length) streamFrame = requestAnimationFrame(step)
     else stream.value = null
@@ -660,9 +676,10 @@ void isApiError
             <PromptBox
               ref="box"
               compact
-              :busy="!!working || !saved"
+              :busy="aiWorking"
+              :off="!saved || working === 'save'"
               placeholder="Ask for a change."
-              :hint="working ? 'The AI is working…' : ''"
+              :hint="aiWorking ? 'The AI is working…' : ''"
               @send="chat"
             />
           </aside>

@@ -76,7 +76,7 @@ export const quizzes = table("quizzes", {
   aiCheck: Field.Bool(true),
   aiEssay: Field.Bool(true),
   // Off: no "Show hint" on the questions (a graded quiz, Kyle's choice of
-  // 04:10: Practice shows answers and hints and allows retakes; Graded holds
+  // 2026-10-02: Practice shows answers and hints and allows retakes; Graded holds
   // results, hides hints and allows one attempt per browser).
   showHints: Field.Bool(true),
   // When an answer is checked and shown (Kyle, 2026-10-02): "each" after the

@@ -18,8 +18,10 @@ const props = withDefaults(
   defineProps<{
     placeholder?: string
     hint?: string
-    /** While true, sending is off and the send button says why. */
+    /** The AI is working: sending is off, and the box shows the work. */
     busy?: boolean
+    /** Sending is off with no work to show: the page is loading or saving. */
+    off?: boolean
     /** A smaller box for the chat panel. */
     compact?: boolean
   }>(),
@@ -27,6 +29,7 @@ const props = withDefaults(
     placeholder: "Create your new quiz…",
     hint: "",
     busy: false,
+    off: false,
     compact: false,
   },
 )
@@ -164,9 +167,16 @@ function onDrop(e: DragEvent) {
 }
 
 const failed = computed(() => uploads.value.some((u) => u.state === "failed"))
+/** Work is going on: the AI on the ask, or a file going up or being read. */
+const working = computed(
+  () =>
+    props.busy ||
+    uploads.value.some((u) => u.state === "uploading" || u.state === "reading"),
+)
 const canSend = computed(
   () =>
     !props.busy &&
+    !props.off &&
     !failed.value &&
     (text.value.trim() !== "" || uploads.value.length > 0),
 )
@@ -221,16 +231,16 @@ defineExpose({ clear, focus, fill })
     class="box"
     :data-compact="compact || undefined"
     :data-dragging="dragging || undefined"
-    :data-busy="busy || undefined"
+    :data-busy="working || undefined"
     @submit.prevent="send"
     @dragover.prevent="dragging = true"
     @dragleave.self="dragging = false"
     @drop.prevent="onDrop"
   >
-    <!-- The ring that turns while the AI works, and the glow outside the
-         box; the resting ring is the box's own ::before. -->
+    <!-- Behind the box, four colored shadows; on its edge, the ring that
+         turns while work is going on. -->
+    <i class="glow" aria-hidden="true"><i /><i /><i /><i /></i>
     <i class="ring" aria-hidden="true" />
-    <i class="glow" aria-hidden="true" />
     <textarea
       ref="field"
       v-model="text"
@@ -268,6 +278,7 @@ defineExpose({ clear, focus, fill })
         class="attach"
         aria-label="Attach a PDF or photos"
         title="Attach a PDF or photos"
+        :disabled="busy"
         @click="picker?.click()"
       >
         <Icon name="plus" :size="22" />
@@ -310,59 +321,100 @@ defineExpose({ clear, focus, fill })
   initial-value: 0deg;
 }
 
+/*
+ * Three looks. At rest a 1px line. With the cursor in it a 1.5px outline in
+ * the ink's own gray, and on the home page's big box four colored shadows
+ * behind it. While work is going on (the AI, or a file going up) a ring in
+ * the brand's colors turns on the edge and the shadows breathe and drift,
+ * on both boxes.
+ *
+ * The box is a stack of its own, bottom to top: the shadows, the face (the
+ * surface and its line), the outline and the ring, the controls. The face is
+ * a layer and not the form's own background so the shadows can sit under it
+ * without sliding under the page as well.
+ */
 .box {
-  --bw: 2px;
-  --ring: conic-gradient(
-    from var(--angle),
-    var(--accent),
-    var(--student),
-    #ef6c00,
-    var(--accent)
-  );
+  --glow-orange: #ff7a1a;
+  --glow-magenta: #c04be0;
+  --glow-blue: #3d8bff;
+  --glow-amber: #ffb224;
+  --brown: var(--accent);
+  --purple: var(--student);
+  --orange: #ef6c00;
+  --blue: #2f6fdb;
+  /* The ring's width. */
+  --rw: 2px;
   position: relative;
+  isolation: isolate;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 16px 16px 12px;
-  /* The line is drawn by the ring below; the border keeps the box's size. */
-  border: var(--bw) solid transparent;
+  padding: 18px 18px 14px;
   border-radius: var(--radius-xl);
-  background: var(--surface);
-  box-shadow: var(--shadow-sm);
-  transition:
-    border-color var(--fast),
-    box-shadow var(--fast);
 
-  /* The brand's three colors around the edge, masked to the border's own
-     ring: at 55% at rest, whole when the box has focus. */
   &::before,
-  .ring {
-    content: "";
+  &::after,
+  .ring,
+  .glow,
+  .glow i {
     position: absolute;
-    inset: calc(-1 * var(--bw));
-    z-index: 0;
-    padding: var(--bw);
+    inset: 0;
     border-radius: inherit;
-    background: var(--ring);
+    pointer-events: none;
+  }
+
+  /* The face. */
+  &::before {
+    content: "";
+    z-index: -1;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    box-shadow: var(--shadow-sm);
+  }
+
+  /* The outline of a box with the cursor in it: neutral, 150 ms in. It
+     gives way to the ring while work is going on. An inset shadow and not a
+     border: a border of 1.5px is drawn as 1px on a screen of one device
+     pixel to the CSS pixel, the same as the resting line. */
+  &::after {
+    content: "";
+    z-index: 0;
+    box-shadow: inset 0 0 0 1.5px
+      color-mix(in srgb, var(--ink) 55%, transparent);
+    opacity: 0;
+    transition: opacity var(--fast) var(--ease);
+  }
+  &:focus-within::after {
+    opacity: 1;
+  }
+  &[data-busy]::after {
+    opacity: 0;
+    transition-duration: 300ms;
+  }
+
+  /* The ring: the brand's colors around the edge, masked to a band as wide
+     as --rw. It turns once every 3 s while work is going on, and is paused
+     rather than removed when the work ends, so its 300 ms fade starts from
+     wherever it was. The gradient is written here and not handed down in a
+     variable: a variable holding var(--angle) is resolved on the element
+     that declares it, and the ring would inherit a gradient stuck at 0deg. */
+  .ring {
+    z-index: 0;
+    padding: var(--rw);
+    /* Brighter relatives of the brand colors: the brown and the purple read
+       near black in a 1.5px line and gray in a blurred shadow. */
+    background: conic-gradient(
+      from var(--angle),
+      var(--glow-orange),
+      var(--glow-magenta),
+      var(--glow-blue),
+      var(--glow-amber),
+      var(--glow-orange)
+    );
     mask:
       linear-gradient(#000 0 0) content-box,
       linear-gradient(#000 0 0);
     mask-composite: exclude;
-    pointer-events: none;
-  }
-  &::before {
-    opacity: 0.55;
-    transition: opacity var(--fast) var(--ease);
-  }
-  &:focus-within::before {
-    opacity: 1;
-  }
-  /* While the AI works the ring turns, once every 3 s (the one repeating
-     motion here: it marks work going on), and a glow breathes outside the
-     box. The turning ring is its own layer, faded in and out over 300 ms,
-     and paused rather than removed when the work ends, so it fades from
-     wherever it was rather than snapping to the top. */
-  .ring {
     opacity: 0;
     animation: turn 3s linear infinite paused;
     transition: opacity 300ms var(--ease);
@@ -371,62 +423,95 @@ defineExpose({ clear, focus, fill })
     opacity: 1;
     animation-play-state: running;
   }
-  /* The glow: 35% of the accent, breathing between 25% and 45% over 2 s.
-     The breathing is on the pseudo and the 300 ms fade on the element, so
-     the fade starts from the breath's own value rather than snapping (a
-     transition does not start from an animated value). Paused, not
-     removed, when the work ends. Under reduced motion the breath is over
-     at once and the 35% holds. */
+
+  /* The shadows: one layer a color, each a soft drop shadow thrown its own
+     way (purple down and left, orange up and right, brown below, blue up and
+     left). A layer is 21px smaller than the box all round with the spread
+     21px larger, so the shadow is the box's own while the layer, which moves,
+     never reaches past the box and never adds to what the page scrolls.
+
+     While work is going on each layer goes round the box on a circle as wide
+     as its throw, once every 12 s, without turning itself (turning a layer
+     as wide as the box would swing it across the page), and breathes between
+     70% and full every 2 s. Only transform and opacity change; the shadows
+     are drawn once. Paused, not removed, when the work ends. Under reduced
+     motion both are over at once and the shadows stay where they rest. */
   .glow {
-    position: absolute;
-    inset: calc(-1 * var(--bw));
-    z-index: -1;
-    border-radius: inherit;
+    z-index: -2;
     opacity: 0;
     transition: opacity 300ms var(--ease);
-    pointer-events: none;
 
-    &::before {
-      content: "";
-      position: absolute;
-      inset: 0;
-      border-radius: inherit;
-      box-shadow: 0 0 24px color-mix(in srgb, var(--accent) 45%, transparent);
-      opacity: 0.78;
-      animation: breathe 2s ease-in-out infinite paused;
+    i {
+      inset: 21px;
+      box-shadow: 0 0 var(--blur) calc(var(--spread) + 21px)
+        color-mix(in srgb, var(--c) 62%, transparent);
+      transform: rotate(var(--a)) translateX(var(--r))
+        rotate(calc(-1 * var(--a)));
+      animation:
+        drift 12s linear infinite paused,
+        breathe 2s ease-in-out infinite paused;
     }
+    /* -18px 10px 44px -10px */
+    i:nth-child(1) {
+      --c: var(--glow-magenta);
+      --a: 150.95deg;
+      --r: 20.6px;
+      --blur: 44px;
+      --spread: -10px;
+    }
+    /* 18px -10px 44px -10px */
+    i:nth-child(2) {
+      --c: var(--glow-orange);
+      --a: -29.05deg;
+      --r: 20.6px;
+      --blur: 44px;
+      --spread: -10px;
+    }
+    /* 0 18px 48px -12px */
+    i:nth-child(3) {
+      --c: var(--glow-amber);
+      --a: 90deg;
+      --r: 18px;
+      --blur: 48px;
+      --spread: -12px;
+    }
+    /* -10px -14px 40px -12px */
+    i:nth-child(4) {
+      --c: var(--glow-blue);
+      --a: 234.46deg;
+      --r: 17.2px;
+      --blur: 40px;
+      --spread: -12px;
+    }
+  }
+  /* The big box with the cursor in it: the shadows, still, 200 ms in. */
+  /* Softer than the working state, so work reads as the stronger of the two. */
+  &:not([data-compact], [data-busy]):focus-within .glow {
+    opacity: 0.6;
+    transition-duration: 200ms;
   }
   &[data-busy] .glow {
     opacity: 1;
+    transition-duration: 300ms;
 
-    &::before {
+    i {
       animation-play-state: running;
     }
   }
+
   > :not(.ring, .glow) {
     position: relative;
     z-index: 1;
   }
 
-  &:focus-within {
-    box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 15%, transparent);
-  }
-
-  &[data-dragging] {
-    border-style: dashed;
-    border-color: var(--accent);
+  &[data-dragging]::before {
+    border: 2px dashed var(--accent);
     background: color-mix(in srgb, var(--accent) 5%, var(--surface));
-
-    &::before {
-      opacity: 0;
-    }
   }
 
   &[data-compact] {
-    --bw: 1.5px;
-    padding: 10px 10px 8px 14px;
-    border-width: var(--bw);
-    border-radius: var(--radius-xl);
+    --rw: 1.5px;
+    padding: 11.5px 11.5px 9.5px 15.5px;
 
     textarea {
       min-height: 24px;
@@ -456,6 +541,7 @@ textarea {
 
   &::placeholder {
     color: var(--muted);
+    opacity: 1;
   }
 }
 
@@ -574,8 +660,13 @@ textarea {
   background: none;
   color: var(--ink);
 
-  &:hover {
+  &:hover:not(:disabled) {
     background: var(--hover);
+  }
+  /* Off with the send button while the AI works, and as dim. */
+  &:disabled {
+    color: color-mix(in srgb, var(--ink) 35%, transparent);
+    cursor: default;
   }
 }
 
@@ -620,29 +711,21 @@ textarea {
   }
 }
 
-/* Dark: the same three stops, each a quarter toward white, as the tokens
-   lighten the accent. */
-:root[data-theme="dark"] .box {
-  --ring: conic-gradient(
-    from var(--angle),
-    color-mix(in srgb, var(--accent) 75%, white),
-    color-mix(in srgb, var(--student) 75%, white),
-    color-mix(in srgb, #ef6c00 75%, white),
-    color-mix(in srgb, var(--accent) 75%, white)
-  );
-}
 @keyframes turn {
   to {
     --angle: 360deg;
   }
 }
-@keyframes breathe {
-  from,
+@keyframes drift {
   to {
-    opacity: 0.56;
+    transform: rotate(calc(var(--a) + 1turn)) translateX(var(--r))
+      rotate(calc(-1 * var(--a) - 1turn));
   }
+}
+/* From full, so a paused breath (the big box with the cursor in it) is full. */
+@keyframes breathe {
   50% {
-    opacity: 1;
+    opacity: 0.7;
   }
 }
 </style>
