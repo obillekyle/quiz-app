@@ -37,7 +37,8 @@ auth.post('/code', async (c) => {
     return c.json({ error: 'Enter a valid email address.', field: 'email' }, 400)
   if (!mailConfigured() && !mailToLog())
     return c.json({ error: 'Email sign-in is not set up on this server. Continue with Google instead.' }, 503)
-  if (!within(codesFrom, addressOf(c), 10))
+  // Sixty, not ten: a hall's network is one sender, and the day's total below is what guards the mailbox.
+  if (!within(codesFrom, addressOf(c), 60))
     return c.json(busy('Too many codes were asked for from here in the last hour. Try again later, or continue with Google.'), 429)
   if (!within(codesToday, 'all', 300, Date.now(), 24 * 3600_000))
     return c.json(busy('Too many codes were sent today. Continue with Google, or try again tomorrow.'), 429)

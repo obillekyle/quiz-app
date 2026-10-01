@@ -126,10 +126,11 @@ respond.post('/q/:code/reports', async (c) => {
   return c.json({ ok: true }, 201)
 })
 
-// Nobody here is signed in, so the bounds are per sender's address. A class
-// often shares one address (a school's network), so each is set well above
-// what forty people do in an hour and well below what a loop does.
-/** Attempts started from one address: three classes' worth. */
+// Nobody here is signed in, so the bounds are per sender's address. A
+// school's network, or a hall where an audience scans the code, is one
+// address: each bound is set above what a few hundred people there do in an
+// hour and below what a loop left running does.
+/** Attempts started from one address. */
 const starts = new Map<string, number[]>()
 /** Typed answers and essays graded for one address; each may be an AI call. */
 const typedFrom = new Map<string, number[]>()
@@ -248,7 +249,7 @@ respond.post('/q/:code/attempts', async (c) => {
   const body = await c.req.json().catch(() => ({}))
   const name = typeof body.name === 'string' ? body.name.trim().slice(0, 80) : ''
   if (!name) throw new HTTPException(400, { message: 'Enter your name to start.' })
-  if (!within(starts, addressOf(c), 120))
+  if (!within(starts, addressOf(c), 600))
     throw new HTTPException(429, { message: 'Too many attempts were started from here in the last hour. Try again later.' })
   // The section is optional ("7 Sampaguita"); an empty one is stored as null.
   const section = typeof body.section === 'string' ? body.section.trim().slice(0, 80) : ''
@@ -459,7 +460,7 @@ respond.post('/attempts/:id/answers', async (c) => {
       return c.json({ error: 'This answer has been changed too many times. The last one saved is kept.', field: 'changes' }, 429)
     changes.set(key, n)
   }
-  if ((q.kind === 'identify' || q.kind === 'essay') && !within(typedFrom, addressOf(c), 400))
+  if ((q.kind === 'identify' || q.kind === 'essay') && !within(typedFrom, addressOf(c), 2000))
     return c.json({ error: 'Too many answers were sent from here in the last hour. Try again in a few minutes.', field: 'busy' }, 429)
 
   const result: Graded =

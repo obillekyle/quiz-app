@@ -464,10 +464,10 @@ A per-question limit is kept by the page, which moves on at zero; the server doe
 
 | What | Limit |
 | --- | --- |
-| Sign-in codes | One per email address per 30 s, five per hour; five tries per code. Ten an hour per sender, and 300 a day in all, so one sender cannot spend the mailbox's daily sends. |
+| Sign-in codes | One per email address per 30 s, five per hour; five tries per code. Sixty an hour per sender (a hall's network is one sender) and 300 a day in all, so the mailbox's daily sends cannot be spent. |
 | Password sign-in | Thirty tries an hour per sender and ten per email address. |
-| Attempts started | 120 an hour per sender: three classes on one school network. |
-| Typed answers and essays | 400 an hour per sender; each may be an AI call. An answer on a quiz checked at the end can be replaced eight times. An identification answer is cut to 200 characters. |
+| Attempts started | 600 an hour per sender: a school's network, or a hall where an audience scans the code, is one sender. |
+| Typed answers and essays | 2,000 an hour per sender; each may be an AI call. An answer on a quiz checked at the end can be replaced eight times. An identification answer is cut to 200 characters. |
 | AI requests by an account | Sixty an hour for drafts, chat edits and notes; sixty picture searches; sixty uploaded files. |
 | Request size | 512 KB, and 26 MB on the three routes that take a file; a larger body is refused with 413 before it is read. |
 | Reports | Ten an hour per sender, counted in memory. |
