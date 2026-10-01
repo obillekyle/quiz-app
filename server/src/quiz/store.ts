@@ -225,22 +225,35 @@ function picture(q: any): Pick<QuestionDraft, 'image' | 'imageAlt' | 'imageCredi
   }
 }
 
+/** A question as it is saved: one that names a row of this quiz keeps that row. */
+export type Saving = QuestionDraft & { id?: number | null }
+
 /**
- * Replaces a quiz's questions, grounding each quote against the material's
- * pages. A found quote takes the page it was found on, which may correct the
- * page the AI gave.
+ * Saves a quiz's questions in the order given, grounding each quote against
+ * the material's pages. A found quote takes the page it was found on, which
+ * may correct the page the AI gave.
+ *
+ * A question that carries the id of one of the quiz's rows is updated in
+ * place; one without is inserted; a row the list no longer names is deleted.
+ * Rows used to be deleted and inserted afresh on every save, and answers
+ * hang off question rows with a cascade: fixing a typo, or any chat edit,
+ * deleted every respondent's answers to every question, and the ids in each
+ * attempt's saved layout went stale. Now only a question the maker removes
+ * takes its answers with it.
  */
-export async function saveQuestions(quizId: number, list: QuestionDraft[]) {
+export async function saveQuestions(quizId: number, list: Saving[]) {
   const sources = await loadSources(quizId)
   const pages = allPages(sources)
   const texts = pages.map((p) => p.text)
   await DB.transaction(async () => {
-    await DB.Delete.from('questions').where('questions.quizId', quizId).run()
+    const rows = (await DB.from('questions').where('questions.quizId', quizId).array()) as any[]
+    const free = new Set(rows.map((r) => Number(r.id)))
     for (const [i, q] of list.entries()) {
       const g = ground(q.quote, texts, null)
       const where = g.found && g.page ? pages[g.page - 1] : null
-      await DB.Insert.into('questions')
-        .values({
+      // An id counts once: a second question claiming the same row is new.
+      const keep = q.id != null && free.delete(Number(q.id)) ? Number(q.id) : null
+      const values = {
           quizId,
           position: i,
           kind: q.kind,
@@ -260,9 +273,11 @@ export async function saveQuestions(quizId: number, list: QuestionDraft[]) {
           image: q.image ?? null,
           imageAlt: q.imageAlt ?? null,
           imageCredit: q.imageCredit ? JSON.stringify(q.imageCredit) : null,
-        })
-        .run()
+      }
+      if (keep != null) await DB.Update.table('questions').set(values).where('questions.id', keep).run()
+      else await DB.Insert.into('questions').values(values).run()
     }
+    for (const id of free) await DB.Delete.from('questions').where('questions.id', id).run()
     await DB.Update.table('quizzes').set({ updatedAt: Math.floor(Date.now() / 1000) }).where('quizzes.id', quizId).run()
   })
 }

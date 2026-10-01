@@ -12,6 +12,7 @@ import {
   KIND_LABEL,
   KINDS,
   refreshQuizzes,
+  useQuizzes,
   type FullQuiz,
   type Kind,
   type Question,
@@ -454,6 +455,16 @@ function fileLine(s: FullQuiz["sources"][number]) {
 const secs = (ms?: number) => (ms ? `${Math.round(ms / 1000)} s` : "")
 const isApiError = (e: unknown): e is ApiError => e instanceof ApiError
 void isApiError
+
+// ---- a quiz people have already answered ---------------------------------------
+// The count of finished responses, from the shared quiz list. An edit keeps
+// each question's row, so answers stay with their questions; the note says
+// what an edit does and does not change.
+const { quizzes: allQuizzes } = useQuizzes()
+const answeredBy = computed(
+  () =>
+    allQuizzes.value.find((q) => q.id === saved.value?.quiz.id)?.responses ?? 0,
+)
 </script>
 
 <template>
@@ -748,6 +759,12 @@ void isApiError
                 <Icon name="sparkle" :size="18" /> Edit with AI
               </button>
             </div>
+            <p v-if="answeredBy" class="answered-note" role="note">
+              {{ answeredBy }}
+              {{ answeredBy === 1 ? "person has" : "people have" }} answered
+              this quiz. An edit keeps their answers and their scores as they
+              were graded. Deleting a question deletes its answers.
+            </p>
 
             <div class="qlist">
               <QuestionCard
@@ -782,6 +799,14 @@ void isApiError
 </template>
 
 <style scoped>
+/* Shown once people have answered: what an edit keeps and what it removes. */
+.answered-note {
+  margin: 0 0 12px;
+  padding: 10px 14px;
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--warn) 12%, var(--surface));
+  font-size: 14px;
+}
 .builder {
   display: flex;
   flex-direction: column;

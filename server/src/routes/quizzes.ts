@@ -4,12 +4,12 @@ import { basename, join } from 'node:path'
 import DB from 'bakery-orm'
 import { Hono, type Context } from 'hono'
 import { HTTPException } from 'hono/http-exception'
-import { draftQuiz, refineQuiz, applyOps, teachAgainNote, type QuestionDraft } from '../ai/quiz.ts'
+import { draftQuiz, refineQuiz, applyOps, teachAgainNote } from '../ai/quiz.ts'
 import { requireUser, type User } from '../auth/session.ts'
 import { resultsMail, sendMail } from '../mail.ts'
 import { whenRead } from '../quiz/read.ts'
 import { attachSources, loadSources, materialParts, removeFiles, type Source } from '../quiz/sources.ts'
-import { addMessage, clean, exclusive, fullQuiz, newShareCode, ownQuiz, saveQuestions, settingsOf } from '../quiz/store.ts'
+import { addMessage, clean, exclusive, fullQuiz, newShareCode, ownQuiz, saveQuestions, settingsOf, type Saving } from '../quiz/store.ts'
 
 export const quizzes = new Hono<{ Variables: { user: User } }>()
 
@@ -184,15 +184,22 @@ quizzes.post('/:id/chat', async (c) => {
       return c.json(await fullQuiz(id))
     }
 
-    const before: QuestionDraft[] = current.questions.map(({ id: _id, check: _check, file: _file, ...q }) => q)
-    const { data, ms, model } = await refineQuiz(text || 'Use the new material too.', current.quiz.title, before, parts)
+    // Each question keeps its row's id through the edit, so its answers stay
+    // with it; the AI sees the questions without the ids.
+    const before: Saving[] = current.questions.map(({ check: _check, file: _file, ...q }) => q)
+    const { data, ms, model } = await refineQuiz(
+      text || 'Use the new material too.',
+      current.quiz.title,
+      before.map(({ id: _id, ...q }) => q),
+      parts,
+    )
     // The AI rewrites a question without its picture; the picture stays.
-    const after = applyOps(
+    const after = applyOps<Saving>(
       before,
       data.ops ?? [],
       (q) => q,
-      (old, q) => ({ ...q, image: old.image ?? null, imageAlt: old.imageAlt ?? null, imageCredit: old.imageCredit ?? null }),
-    ).map((q, i) => clean(q, i + 1))
+      (old, q) => ({ ...q, id: old.id, image: old.image ?? null, imageAlt: old.imageAlt ?? null, imageCredit: old.imageCredit ?? null }),
+    ).map((q, i) => ({ ...clean(q, i + 1), id: q.id ?? null }))
     await saveQuestions(id, after)
     if (data.title) await DB.Update.table('quizzes').set({ title: data.title.slice(0, 160) }).where('quizzes.id', id).run()
     await addMessage(id, 'ai', data.reply, { model, ms, ops: (data.ops ?? []).map((o) => o.op) })
@@ -208,7 +215,8 @@ quizzes.put('/:id', async (c) => {
   const title = typeof body.title === 'string' ? body.title.trim().slice(0, 160) : ''
   if (!title) throw new HTTPException(400, { message: 'Give the quiz a title.' })
   if (!Array.isArray(body.questions)) throw new HTTPException(400, { message: 'The questions are missing.' })
-  const list = body.questions.map((q: unknown, i: number) => clean(q, i + 1))
+  // The builder sends each question with the id it was loaded with; a new one has none.
+  const list: Saving[] = body.questions.map((q: any, i: number) => ({ ...clean(q, i + 1), id: Number.isInteger(q?.id) ? q.id : null }))
   return exclusive(id, async () => {
     await saveQuestions(id, list)
     await DB.Update.table('quizzes').set({ title }).where('quizzes.id', id).run()
