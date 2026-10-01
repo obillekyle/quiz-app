@@ -801,7 +801,9 @@ const answeredBy = computed(
 <style scoped>
 /* Shown once people have answered: what an edit keeps and what it removes. */
 .answered-note {
-  margin: 0 0 12px;
+  /* The questions' own column. */
+  max-width: 820px;
+  margin: 0 auto 14px;
   padding: 10px 14px;
   border-radius: var(--radius-lg);
   background: color-mix(in srgb, var(--warn) 12%, var(--surface));

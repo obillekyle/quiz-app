@@ -194,6 +194,7 @@ Code: `refineQuiz` and `applyOps` in `server/src/ai/quiz.ts`; `POST /api/quizzes
 - A message that is not about the quiz gets no operations, and a reply saying what the chat can help with.
 - Files attached in the chat join the material first. A quiz with no questions yet gets a draft instead of an edit.
 - One AI job runs per quiz at a time: a second request while one runs gets a 409 with a message to wait.
+- A question keeps its row through an edit. The builder's Save sends each question with the id it was loaded with, and a chat edit carries the ids through the operations (the model sees the questions without them). `saveQuestions` updates a row whose id the list names, inserts a question without one, and deletes a row the list no longer names. Answers hang off question rows with a cascade, so only a question the maker removes takes its answers with it. Before 2026-10-02 every save deleted and inserted all the rows, which deleted every respondent's answers.
 
 Measured: 5 to 6.4 s per edit on `gemini-3.1-flash-lite`.
 
