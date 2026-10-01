@@ -125,6 +125,16 @@ export type Draft = { choice?: number; text?: string }
  */
 export type Layout = { order: number[]; options: Record<string, number[]> }
 
+/**
+ * The study note on a finished attempt: one sentence on what went right,
+ * then up to three topics to go over, each with the questions it rests on
+ * and, when the question has a source, where in the material to look.
+ */
+export type Advice = {
+  strengths: string
+  review: { topic: string; why: string; where: string | null }[]
+}
+
 export type Attempt = Layout & {
   status: "open" | "finished"
   name: string
@@ -140,6 +150,8 @@ export type Attempt = Layout & {
   timeLeft: number | null
   /** The address to tell when the results are released. */
   notify: string | null
+  /** The study note, once written; never while the results are held. */
+  advice: Advice | null
 }
 
 /** An attempt this browser started: its id and the token that proves it. */
@@ -270,6 +282,16 @@ export const takeApi = {
       | { held: true; total: number; answered: number }
     >(`/attempts/${h.attempt}/finish`, {
       body: rating ? { rating } : {},
+      headers: { "x-attempt-token": h.token },
+    }),
+  /**
+   * The study note for a finished attempt whose results show. The first
+   * request has the AI write it (several seconds); every later one gets the
+   * stored note back.
+   */
+  advice: (h: Held) =>
+    api<{ advice: Advice }>(`/attempts/${h.attempt}/advice`, {
+      body: {},
       headers: { "x-attempt-token": h.token },
     }),
   /** The address to email when the quiz maker releases the results. */

@@ -2,7 +2,8 @@ import { randomBytes, randomInt } from 'node:crypto'
 import DB from 'bakery-orm'
 import { Hono } from 'hono'
 import { HTTPException } from 'hono/http-exception'
-import type { QuestionDraft } from '../ai/quiz.ts'
+import { studyNote, type QuestionDraft, type StudyNote, type StudyRow } from '../ai/quiz.ts'
+import { addressOf, within } from '../limits.ts'
 import { gradeChoice, gradeEssay, gradeTyped, type Graded } from '../quiz/grade.ts'
 import { coverUrl, fullQuiz, type Question } from '../quiz/store.ts'
 
@@ -90,8 +91,9 @@ respond.get('/q/:code', async (c) => {
       choices: x.choices.map((ch) => ch.text),
       points: x.points,
       // The hint names where to look; the sentence itself comes with the feedback.
-      topic: x.topic || null,
-      page: x.page,
+      // With hints off, where to look is not sent at all.
+      topic: rules.hints ? x.topic || null : null,
+      page: rules.hints ? x.page : null,
       image: x.image ?? null,
       imageAlt: x.imageAlt ?? null,
       imageCredit: x.imageCredit ?? null,
@@ -124,16 +126,16 @@ respond.post('/q/:code/reports', async (c) => {
   return c.json({ ok: true }, 201)
 })
 
-const addressOf = (c: { req: { header(name: string): string | undefined } }) =>
-  c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || 'local'
-
-/** Counts one request from `who` against `max` an hour; false once the hour is full. */
-function within(log: Map<string, number[]>, who: string, max: number, now = Date.now()) {
-  const recent = (log.get(who) ?? []).filter((t) => now - t < 3600_000)
-  if (recent.length >= max) return false
-  log.set(who, [...recent, now])
-  return true
-}
+// Nobody here is signed in, so the bounds are per sender's address. A class
+// often shares one address (a school's network), so each is set well above
+// what forty people do in an hour and well below what a loop does.
+/** Attempts started from one address: three classes' worth. */
+const starts = new Map<string, number[]>()
+/** Typed answers and essays graded for one address; each may be an AI call. */
+const typedFrom = new Map<string, number[]>()
+/** Times one answer was replaced on a quiz checked at the end; each typed one is graded again. */
+const changes = new Map<string, number>()
+const MAX_CHANGES = 8
 
 // ---- the layout: the order an attempt is shown in, kept with it -------------------
 
@@ -246,6 +248,8 @@ respond.post('/q/:code/attempts', async (c) => {
   const body = await c.req.json().catch(() => ({}))
   const name = typeof body.name === 'string' ? body.name.trim().slice(0, 80) : ''
   if (!name) throw new HTTPException(400, { message: 'Enter your name to start.' })
+  if (!within(starts, addressOf(c), 120))
+    throw new HTTPException(429, { message: 'Too many attempts were started from here in the last hour. Try again later.' })
   // The section is optional ("7 Sampaguita"); an empty one is stored as null.
   const section = typeof body.section === 'string' ? body.section.trim().slice(0, 80) : ''
   const full = await fullQuiz(Number(q.id))
@@ -358,6 +362,8 @@ const graded = (row: any): Given & Graded => ({
  * the whole quiz. While the results are held, the answers carry only what
  * was given, and the score stays out. On a quiz checked at the end, an open
  * attempt's answers are picks: what was chosen or typed, nothing judged.
+ * A finished attempt whose results show carries its study note, once one
+ * has been written.
  */
 respond.get('/attempts/:id', async (c) => {
   const r = await ownAttempt(Number(c.req.param('id')), tokenOf(c))
@@ -383,6 +389,8 @@ respond.get('/attempts/:id', async (c) => {
     options,
     timeLeft: timeLeft(r, rules),
     notify: rules.results ? null : (r.notifyEmail ?? null),
+    // The study note, once written, for a finished attempt whose results show.
+    advice: finished && rules.results ? readAdvice(r.advice) : null,
     // A question removed since it was answered drops out.
     answers: picking
       ? shown.flatMap((x) => {
@@ -430,7 +438,7 @@ respond.post('/attempts/:id/answers', async (c) => {
   let choice: number | null = null
   let text: string | null = null
   if (q.kind === 'choice' || q.kind === 'truefalse') choice = Number.isInteger(body.choice) ? body.choice : null
-  else text = typeof body.text === 'string' ? body.text.slice(0, 8000) : ''
+  else text = typeof body.text === 'string' ? body.text.slice(0, q.kind === 'identify' ? 200 : 8000) : ''
 
   const done = await DB.from('answers').where('answers.responseId', r.id).and('answers.questionId', q.id).fetch()
   if (done) {
@@ -441,6 +449,18 @@ respond.post('/attempts/:id/answers', async (c) => {
   const deadline = deadlineOf(r, rules)
   if (deadline != null && Date.now() > deadline + GRACE_MS)
     return c.json({ error: 'The time for this quiz is up, so this answer was not saved.', field: 'time' }, 409)
+
+  // What is graded from here on may call the AI: bounded per answer (a pick
+  // changed again and again on a quiz checked at the end) and per address.
+  if (done) {
+    const key = `${r.id}:${q.id}`
+    const n = (changes.get(key) ?? 0) + 1
+    if (n > MAX_CHANGES)
+      return c.json({ error: 'This answer has been changed too many times. The last one saved is kept.', field: 'changes' }, 429)
+    changes.set(key, n)
+  }
+  if ((q.kind === 'identify' || q.kind === 'essay') && !within(typedFrom, addressOf(c), 400))
+    return c.json({ error: 'Too many answers were sent from here in the last hour. Try again in a few minutes.', field: 'busy' }, 429)
 
   const result: Graded =
     q.kind === 'choice' || q.kind === 'truefalse'
@@ -512,6 +532,118 @@ respond.post('/attempts/:id/finish', async (c) => {
       return a ? feedback(x, graded(a)) : feedback(x, none, true)
     }),
   })
+})
+
+// ---- the study note ---------------------------------------------------------------
+
+/** A stored note, read back; null when there is none or it does not parse. */
+function readAdvice(v: unknown): StudyNote | null {
+  if (typeof v !== 'string' || !v) return null
+  try {
+    const n = JSON.parse(v)
+    return n && typeof n.strengths === 'string' && Array.isArray(n.review) ? (n as StudyNote) : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * An attempt's questions as the note reads them, numbered in the order the
+ * attempt showed them (the numbers the respondent's review carries). An
+ * answer counts as right at full points, so an essay scored 4 of 5 is partly
+ * right here although it passes; an essay waiting for the quiz maker's score
+ * is neither right nor missed.
+ */
+export function studyRows(shown: Question[], given: Map<number, any>): StudyRow[] {
+  return shown.map((q, i) => {
+    const row = given.get(q.id)
+    const a = row ? graded(row) : null
+    const outcome: StudyRow['outcome'] =
+      !a || (a.choice == null && !a.text?.trim())
+        ? 'skipped'
+        : a.pending
+          ? 'pending'
+          : a.score >= q.points
+            ? 'right'
+            : a.score > 0
+              ? 'partial'
+              : 'wrong'
+    return { number: i + 1, topic: q.topic, kind: q.kind, prompt: q.prompt, points: q.points, score: a ? a.score : 0, outcome, page: q.page, quote: q.quote }
+  })
+}
+
+/** The note when nothing was missed: written here, in the quiz's language, with no AI asked. */
+const NOTHING_MISSED = {
+  en: 'You answered every question right, so there is nothing to review.',
+  fil: 'Tama ang sagot mo sa bawat tanong, kaya wala kang kailangang balikan.',
+}
+/** The same, while an essay still waits for the quiz maker's score. */
+const NOTHING_MISSED_YET = {
+  en: 'Every question scored so far is right. An essay still waits for the quiz maker’s score.',
+  fil: 'Tama ang lahat ng tanong na may marka na. May sanaysay pang naghihintay ng marka mula sa gumawa ng quiz.',
+}
+
+/** Notes being written, by attempt: a second request while one runs waits for the same note. */
+const writing = new Map<number, Promise<StudyNote>>()
+const adviceLog = new Map<string, number[]>()
+
+/**
+ * "What to review": the AI's study note for one finished attempt (ai/quiz.ts,
+ * `studyNote`), written on request and kept on the attempt. Only once the
+ * respondent can see the results; while the quiz maker holds them, a note
+ * would give them away.
+ *
+ * The cost is bounded at one AI call per attempt, ever: a stored note is
+ * returned as it is, and two requests at once share one call. An attempt
+ * with nothing missed gets a fixed sentence and no call. That sentence is
+ * stored too, unless an essay still waits for the quiz maker's score: its
+ * score may yet give the note something to say. A failed call stores
+ * nothing, so the respondent can ask again. Sixty calls an hour from one
+ * address, the allowance the results email below has: a class on one school
+ * network asks within minutes of each other.
+ *
+ * The AI is sent the quiz's title and language, the score and each
+ * question's outcome. The name, the section and the answers themselves stay
+ * here.
+ */
+respond.post('/attempts/:id/advice', async (c) => {
+  const body = await c.req.json().catch(() => ({}))
+  const r = await ownAttempt(Number(c.req.param('id')), tokenOf(c, body))
+  const rules = rulesOf(await quizOf(r))
+  if (r.status !== 'finished') throw new HTTPException(409, { message: 'Finish the quiz first. The study note is written from a finished attempt.' })
+  if (!rules.results) throw new HTTPException(409, { message: 'The study note comes with the results, and the quiz maker has not released them yet.' })
+  const kept = readAdvice(r.advice)
+  if (kept) return c.json({ advice: kept })
+
+  const id = Number(r.id)
+  const full = await fullQuiz(Number(r.quizId))
+  const rows = await DB.from('answers').where('answers.responseId', id).array()
+  const given = new Map(rows.map((a: any) => [Number(a.questionId), a]))
+  const byId = new Map(full.questions.map((x) => [x.id, x]))
+  const shown = servedOrder(readLayout(r.layout), full.questions).order.map((qid) => byId.get(qid)!)
+  const questions = studyRows(shown, given)
+  const language = full.quiz.language === 'fil' ? 'fil' : 'en'
+  const keep = (note: StudyNote) =>
+    DB.Update.table('responses').set({ advice: JSON.stringify(note), adviceAt: Math.floor(Date.now() / 1000) }).where('responses.id', id).run()
+
+  if (!questions.some((q) => q.outcome === 'wrong' || q.outcome === 'partial' || q.outcome === 'skipped')) {
+    const waits = questions.some((q) => q.outcome === 'pending')
+    const note: StudyNote = { strengths: (waits ? NOTHING_MISSED_YET : NOTHING_MISSED)[language], review: [] }
+    if (!waits) await keep(note)
+    return c.json({ advice: note })
+  }
+
+  let job = writing.get(id)
+  if (!job) {
+    if (!within(adviceLog, addressOf(c), 60)) throw new HTTPException(429, { message: 'Too many study notes from here in the last hour. Try again later.' })
+    job = (async () => {
+      const { data } = await studyNote({ title: full.quiz.title, language, score: Number(r.score), total: Number(r.total), questions })
+      await keep(data)
+      return data
+    })().finally(() => writing.delete(id))
+    writing.set(id, job)
+  }
+  return c.json({ advice: await job })
 })
 
 /**

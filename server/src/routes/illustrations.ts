@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { HTTPException } from 'hono/http-exception'
 import { requireUser, type User } from '../auth/session.ts'
+import { within } from '../limits.ts'
 import { attach, find, fromUpload, readIllustration, type Asked } from '../quiz/illustrate.ts'
 import { loadSources } from '../quiz/sources.ts'
 import { ownQuiz } from '../quiz/store.ts'
@@ -26,7 +27,11 @@ illustrations.get('/file/:name', async (c) => {
 })
 
 /** Candidates for one question: crops from its page of the module, then Commons pictures. */
+const finds = new Map<string, number[]>()
+
 illustrations.post('/find', requireUser, async (c) => {
+  if (!within(finds, `u${c.get('user').id}`, 60))
+    throw new HTTPException(429, { message: 'Too many picture searches in the last hour. Try again later.' })
   const body = await c.req.json().catch(() => ({}))
   const quiz = await ownQuiz(Number(body.quizId), c.get('user').id)
   const q = body.question ?? {}

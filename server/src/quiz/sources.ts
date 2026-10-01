@@ -47,13 +47,26 @@ export function checkFile(f: File) {
   if (f.type !== 'application/pdf' && f.size > MAX_PHOTO) throw bad(`${f.name} is larger than 10 MB. Attach a smaller photo.`)
 }
 
+/**
+ * A stored path as it is on this machine: what follows `data/uploads` in it,
+ * under this server's own uploads folder. The database travels (written on
+ * Windows in development, copied to the Linux box), and an absolute path
+ * written on one names nothing on the other: on the box, duplicating a seeded
+ * quiz failed and its module could not be cropped for a picture.
+ */
+function here(path: string) {
+  const p = path.replace(/\\/g, '/')
+  const at = p.lastIndexOf('/data/uploads/')
+  return at < 0 ? path : join(DIR, p.slice(at + '/data/uploads/'.length))
+}
+
 export function toSource(r: any): Source {
   return {
     id: Number(r.id),
     name: String(r.name),
     mime: String(r.mime),
     size: Number(r.size),
-    path: String(r.path),
+    path: here(String(r.path)),
     pages: r.text ? (JSON.parse(String(r.text)) as string[]) : null,
     status: r.status ?? 'ready',
     method: r.method ?? null,

@@ -40,13 +40,6 @@ export function useAuth() {
       user.value = r.user
     },
 
-    async register(name: string, email: string, password: string) {
-      const r = await api<{ user: User }>("/auth/register", {
-        body: { name, email, password },
-      })
-      user.value = r.user
-    },
-
     /**
      * Emails a six-digit sign-in code. `via` is 'log' on a development
      * server with no mail set up, where the code lands in the server's log.

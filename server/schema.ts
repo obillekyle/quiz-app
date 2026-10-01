@@ -173,6 +173,12 @@ export const responses = table("responses", {
   pausedAt: Field.Int(null),
   // The section the respondent typed under the name, if any ("7 Sampaguita").
   section: Field.Varchar(80, null),
+  // The AI's study note for this respondent, written once on request after
+  // the quiz is finished and its results are shown: what was missed and
+  // where in the material to look (JSON, see routes/public.ts). The name is
+  // never part of what the AI is sent.
+  advice: Field.Text(true),
+  adviceAt: Field.Int(null),
   // Left by a respondent when results are held back, to be told on release.
   notifyEmail: Field.Varchar(254, null),
   notifiedAt: Field.Int(null),

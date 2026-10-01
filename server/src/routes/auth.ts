@@ -5,12 +5,22 @@ import { checkCode, codeMail, issueCode } from '../auth/codes.ts'
 import { authorizeUrl, exchangeCode, googleConfigured, startRequest } from '../auth/google.ts'
 import { DECOY_HASH, hashPassword, verifyPassword } from '../auth/password.ts'
 import { COOKIE, currentUser, endSession, requireUser, startSession } from '../auth/session.ts'
+import { addressOf, within } from '../limits.ts'
 import { mailConfigured, mailToLog, sendMail, type Sent } from '../mail.ts'
 
 export const auth = new Hono()
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const field = (v: unknown) => (typeof v === 'string' ? v.trim() : '')
+
+// A code per address has its own limits (auth/codes.ts). These bound one
+// sender asking for codes to many addresses, which would spend the mailbox's
+// daily sends, and password guesses, each of which costs a slow hash.
+const codesFrom = new Map<string, number[]>()
+const codesToday = new Map<string, number[]>()
+const triesFrom = new Map<string, number[]>()
+const triesFor = new Map<string, number[]>()
+const busy = (message: string) => ({ error: message })
 
 // ---- a code by email: one step that signs in an account or starts one ------------
 
@@ -27,6 +37,10 @@ auth.post('/code', async (c) => {
     return c.json({ error: 'Enter a valid email address.', field: 'email' }, 400)
   if (!mailConfigured() && !mailToLog())
     return c.json({ error: 'Email sign-in is not set up on this server. Continue with Google instead.' }, 503)
+  if (!within(codesFrom, addressOf(c), 10))
+    return c.json(busy('Too many codes were asked for from here in the last hour. Try again later, or continue with Google.'), 429)
+  if (!within(codesToday, 'all', 300, Date.now(), 24 * 3600_000))
+    return c.json(busy('Too many codes were sent today. Continue with Google, or try again tomorrow.'), 429)
 
   const code = await issueCode(email)
   let via: Sent
@@ -136,42 +150,19 @@ auth.patch('/me', requireUser, async (c) => {
   return c.json({ user: { ...user, name } })
 })
 
-auth.post('/register', async (c) => {
-  const body = await c.req.json().catch(() => ({}))
-  const name = field(body.name)
-  const email = field(body.email).toLowerCase()
-  const password = typeof body.password === 'string' ? body.password : ''
-
-  if (!name) return c.json({ error: 'Enter your name.', field: 'name' }, 400)
-  if (name.length > 80) return c.json({ error: 'Use 80 characters or fewer for your name.', field: 'name' }, 400)
-  if (!EMAIL.test(email)) return c.json({ error: 'Enter a valid email address.', field: 'email' }, 400)
-  if (password.length < 8)
-    return c.json({ error: 'Use at least 8 characters for your password.', field: 'password' }, 400)
-
-  const existing = await DB.from('users').where('users.email', email).fetch()
-  if (existing)
-    return c.json(
-      {
-        error: existing.passwordHash
-          ? 'An account with this email already exists. Sign in instead.'
-          : 'This email signs in with Google. Use Continue with Google instead.',
-        field: 'email',
-      },
-      409,
-    )
-
-  const result = await DB.Insert.into('users')
-    .values({ name, email, passwordHash: await hashPassword(password) })
-    .run()
-  const id = Number(result.lastInsertRowid)
-  await startSession(c, id)
-  return c.json({ user: { id, name, email } }, 201)
-})
+// There is no route that makes an account from a name, an email and a
+// password alone. One existed, unused by the web app, and let anyone create
+// an account for an address they do not own: its password kept working after
+// the address's real owner later signed in by code or Google and landed in
+// the same account. An account starts with a code sent to its inbox, or with
+// Google; a password is added in Settings by someone already signed in.
 
 auth.post('/login', async (c) => {
   const body = await c.req.json().catch(() => ({}))
   const email = field(body.email).toLowerCase()
   const password = typeof body.password === 'string' ? body.password : ''
+  if (!within(triesFrom, addressOf(c), 30) || !within(triesFor, email, 10))
+    return c.json(busy('Too many sign-in tries in the last hour. Try again later, or sign in with a code.'), 429)
 
   const user = email ? await DB.from('users').where('users.email', email).fetch() : null
   // An account made with Google has no password: it checks against the decoy
@@ -198,7 +189,9 @@ auth.get('/me', async (c) => c.json({ user: await currentUser(c) }))
 const PENDING = 'qa_google'
 
 /** Where to land after signing in: a path of ours, or the app. */
-const safeNext = (n: string | undefined) => (n && n.startsWith('/') && !n.startsWith('//') ? n : '/app')
+// One slash, then only characters a path of this app uses: a backslash or a
+// tab after the slash ("/\\evil.com") is read by browsers as "//evil.com".
+const safeNext = (n: string | undefined) => (n && /^\/(?![/\\])[\w\-./?=&%~+:@,;]*$/.test(n) ? n : '/app')
 
 /** Sends the browser to Google's account chooser. */
 auth.get('/google', (c) => {

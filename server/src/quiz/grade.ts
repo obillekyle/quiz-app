@@ -99,6 +99,8 @@ export async function gradeEssay(q: QuestionDraft, text: string, rules: AiRules 
     const score = Math.max(0, Math.min(q.points, Math.round(Number(data.score) * 2) / 2))
     return { correct: score >= q.points * 0.6, score, verdict: data.feedback, byAi: true }
   } catch {
-    return { correct: false, score: 0, verdict: 'The AI could not score this essay. The quiz maker will score it.', byAi: false }
+    // Pending, so the maker's count of essays waiting for a score includes it:
+    // it was a 0 nobody was told about.
+    return { correct: false, score: 0, verdict: 'The AI could not score this essay. The quiz maker will score it.', byAi: false, pending: true }
   }
 }

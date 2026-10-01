@@ -1,5 +1,6 @@
 import DB from 'bakery-orm'
 import { Hono } from 'hono'
+import { bodyLimit } from 'hono/body-limit'
 import { HTTPException } from 'hono/http-exception'
 import { AiError } from './ai/gemini.ts'
 import { auth } from './routes/auth.ts'
@@ -11,6 +12,18 @@ import { responses } from './routes/responses.ts'
 import { uploads } from './routes/uploads.ts'
 
 export const app = new Hono().basePath('/api')
+
+// A body is read whole before a route looks at it, and the deployed process
+// has 450 MB: a few 100 MB posts to any route, signed in or not, would get it
+// killed. Half a megabyte covers the largest JSON the app sends (a quiz of
+// fifty questions with its explanations); the three routes that take a file
+// get the largest file they accept (a 25 MB PDF) and its form's overhead.
+const tooLarge = (c: { json: (body: object, status: 413) => Response }) =>
+  c.json({ error: 'That is too large to send. Use a smaller file or a shorter text.' }, 413)
+const text = bodyLimit({ maxSize: 512 * 1024, onError: tooLarge })
+const file = bodyLimit({ maxSize: 26 * 1024 * 1024, onError: tooLarge })
+const TAKES_FILES = /^\/api\/(uploads|illustrations\/upload|quizzes\/\d+\/image)\/?$/
+app.use('*', (c, next) => (TAKES_FILES.test(c.req.path) ? file : text)(c, next))
 
 app.route('/auth', auth)
 app.route('/quizzes', quizzes)

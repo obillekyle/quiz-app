@@ -5,6 +5,7 @@ import { useRoute } from "vue-router"
 import ConfirmDialog from "../components/ConfirmDialog.vue"
 import Icon from "../components/Icon.vue"
 import LogoMark from "../components/LogoMark.vue"
+import StudyNote from "../components/StudyNote.vue"
 import TakeItem from "../components/TakeItem.vue"
 import { ApiError } from "../composables/api"
 import {
@@ -41,7 +42,8 @@ import {
  * A shared quiz, answered with a name and no account: the respondent's side
  * of QuizApp, in the design's purple (Figma, the five phone screens of
  * `123120.png`). Intro, then the name, then one question at a time, then
- * the score, a rating and a review.
+ * the score, a rating, a study note written by the AI when asked for, and
+ * a review.
  *
  * A tap or a typed word is a pick, and a pick sends nothing: the button
  * under the question confirms it. On a quiz checked as it goes, Check grades
@@ -359,6 +361,7 @@ async function start() {
       options: h.options,
       timeLeft: h.timeLeft,
       notify: null,
+      advice: null,
     }
     setDeadline(h.timeLeft)
     nameDialog.value?.close()
@@ -387,6 +390,7 @@ function startOver() {
   lapsed.value = null
   drafts.value = {}
   returning.value = false
+  adviceError.value = ""
   stage.value = "intro"
   begin()
 }
@@ -788,6 +792,31 @@ async function rate(n: number) {
   } catch (e) {
     state.value.rating = before
     rateError.value = e instanceof Error ? e.message : String(e)
+  }
+}
+
+// ---- the study note: what to review, written by the AI when asked for ---------------
+const adviceBusy = ref(false)
+const adviceError = ref("")
+/** Offered once the attempt is finished and its results show; never while they are held. */
+const adviceOffered = computed(
+  () => state.value?.status === "finished" && !state.value.held,
+)
+async function askAdvice() {
+  const h = held.value
+  if (!h || !state.value || adviceBusy.value) return
+  adviceBusy.value = true
+  adviceError.value = ""
+  try {
+    const r = await takeApi.advice(h)
+    // A note that lands after Start over belongs to the attempt left behind.
+    if (state.value && held.value?.attempt === h.attempt)
+      state.value.advice = r.advice
+  } catch (e) {
+    if (held.value?.attempt === h.attempt)
+      adviceError.value = e instanceof Error ? e.message : String(e)
+  } finally {
+    adviceBusy.value = false
   }
 }
 
@@ -1254,6 +1283,13 @@ const initial = (name: string) => (name.trim()[0] ?? "?").toUpperCase()
             <p v-if="state.rating" class="muted" role="status">Rating sent.</p>
             <p v-if="rateError" class="error" role="alert">{{ rateError }}</p>
           </section>
+          <StudyNote
+            v-if="adviceOffered"
+            :note="state.advice"
+            :busy="adviceBusy"
+            :error="adviceError"
+            @ask="askAdvice"
+          />
           <nav class="links" stack aria-label="After the quiz">
             <button
               v-if="!state.held"
@@ -1305,6 +1341,15 @@ const initial = (name: string) => (name.trim()[0] ?? "?").toUpperCase()
             </button>
             <strong>{{ fmt(score) }} / {{ fmt(state.total) }} points</strong>
           </div>
+          <StudyNote
+            v-if="adviceOffered"
+            class="above-review"
+            compact
+            :note="state.advice"
+            :busy="adviceBusy"
+            :error="adviceError"
+            @ask="askAdvice"
+          />
           <ol class="review">
             <li v-for="(q, i) in questions" :key="q.id" :style="{ '--i': i }">
               <TakeItem
@@ -2264,6 +2309,11 @@ const initial = (name: string) => (name.trim()[0] ?? "?").toUpperCase()
 .back {
   min-height: 44px;
   padding: 0 10px;
+}
+/* The note stands off the first question by the list's own gap (28px), so
+   it reads as a thing above the questions rather than one of them. */
+.above-review {
+  margin-bottom: 16px;
 }
 .review {
   display: flex;

@@ -26,6 +26,8 @@ if (existsSync(resolve(staticDir, 'index.html'))) {
   // `path` is joined onto `root`: an absolute path there became a relative
   // one on Linux ("home/okyle/...") and every deep link answered 404.
   const { serveStatic } = 'Bun' in globalThis ? await import('hono/bun') : await import('@hono/node-server/serve-static')
+  // The pages' fallback would answer an unknown API path with index.html and 200.
+  root.all('/api/*', (c) => c.json({ error: `No route for ${c.req.method} ${c.req.path}` }, 404))
   root.use('/*', serveStatic({ root: staticDir, onFound: (path, c) => c.header('cache-control', cache(path)) }))
   root.get('/*', serveStatic({ root: staticDir, path: 'index.html' }))
   console.log(`serving pages from ${staticDir}`)

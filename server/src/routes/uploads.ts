@@ -5,6 +5,7 @@ import { HTTPException } from 'hono/http-exception'
 import { requireUser, type User } from '../auth/session.ts'
 import { isReading, startReading } from '../quiz/read.ts'
 import { ownUpload, saveUpload, toSource, type Source } from '../quiz/sources.ts'
+import { within } from '../limits.ts'
 
 /**
  * Files from the prompt box, uploaded the moment they are picked and read at
@@ -27,7 +28,12 @@ const view = (s: Source) => ({
   error: s.error,
 })
 
+// A scanned file is read by the AI, five pages a call: sixty files an hour an account.
+const reads = new Map<string, number[]>()
+
 uploads.post('/', async (c) => {
+  if (!within(reads, `u${c.get('user').id}`, 60))
+    throw new HTTPException(429, { message: 'Too many files in the last hour. Try again later.' })
   const body = await c.req.parseBody().catch(() => {
     throw new HTTPException(400, { message: 'The upload could not be read. Try again.' })
   })

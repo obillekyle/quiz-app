@@ -9,6 +9,7 @@ import { requireUser, type User } from '../auth/session.ts'
 import { resultsMail, sendMail } from '../mail.ts'
 import { whenRead } from '../quiz/read.ts'
 import { attachSources, loadSources, materialParts, removeFiles, type Source } from '../quiz/sources.ts'
+import { within } from '../limits.ts'
 import { addMessage, clean, exclusive, fullQuiz, newShareCode, ownQuiz, saveQuestions, settingsOf, type Saving } from '../quiz/store.ts'
 
 export const quizzes = new Hono<{ Variables: { user: User } }>()
@@ -56,6 +57,15 @@ quizzes.get('/:id/image/:file', async (c) => {
 })
 
 quizzes.use('*', requireUser)
+
+// Each account may ask the AI for a draft, a chat edit or a note sixty times
+// an hour: far above a teacher's use, and a bound on what one account can
+// take from the quota every account shares.
+const aiAsks = new Map<string, number[]>()
+function aiBudget(c: { get(key: 'user'): User }) {
+  if (!within(aiAsks, `u${c.get('user').id}`, 60))
+    throw new HTTPException(429, { message: 'Too many AI requests in the last hour. Try again later.' })
+}
 
 /** A JSON body's text field and its source ids (files the prompt box already uploaded). */
 async function message(c: { req: { json: () => Promise<any> } }, field: string) {
@@ -137,6 +147,7 @@ quizzes.get('/:id', async (c) => {
 
 /** The AI's first draft, from the request and files saved by `POST /`. */
 quizzes.post('/:id/draft', async (c) => {
+  aiBudget(c)
   const quiz = await ownQuiz(Number(c.req.param('id')), c.get('user').id)
   const id = Number(quiz.id)
   return exclusive(id, async () => {
@@ -165,6 +176,7 @@ quizzes.post('/:id/draft', async (c) => {
  * quiz with operations (or drafts it, if there is nothing yet).
  */
 quizzes.post('/:id/chat', async (c) => {
+  aiBudget(c)
   const quiz = await ownQuiz(Number(c.req.param('id')), c.get('user').id)
   const id = Number(quiz.id)
   const { text, ids } = await message(c, 'message')
@@ -558,6 +570,7 @@ async function answersOf(responseIds: number[]): Promise<any[]> {
  * of the counts, as the overview leaves it out.
  */
 quizzes.post('/:id/insight', async (c) => {
+  aiBudget(c)
   const quiz = await ownQuiz(Number(c.req.param('id')), c.get('user').id)
   const id = Number(quiz.id)
   const full = await fullQuiz(id)
@@ -632,7 +645,8 @@ quizzes.post('/:id/duplicate', async (c) => {
     await mkdir(dir, { recursive: true })
     for (const s of sources) {
       const path = join(dir, basename(s.path))
-      await cp(s.path, path)
+      // A file that is gone from disk is left out of the copy rather than failing it.
+      if (!(await cp(s.path, path).then(() => true, () => false))) continue
       await DB.Insert.into('sources')
         .values({
           quizId: copy,
@@ -685,7 +699,10 @@ quizzes.get('/:id/responses', async (c) => {
 
 /** A CSV cell: quoted when it holds a comma, a quote or a line break, the quotes doubled. */
 const cell = (v: unknown) => {
-  const s = v == null ? '' : String(v)
+  let s = v == null ? '' : String(v)
+  // A name typed as "=HYPERLINK(...)" would run as a formula in the maker's
+  // spreadsheet; a leading apostrophe makes the cell text.
+  if (typeof v === 'string' && /^[=+\-@\t\r]/.test(s)) s = `'${s}`
   return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
 }
 

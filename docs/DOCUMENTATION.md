@@ -233,6 +233,18 @@ Code: `teachAgainNote` in `server/src/ai/quiz.ts`; `POST /api/quizzes/:id/insigh
 
 The list of most-missed questions beside it is plain arithmetic: the share of finished responses that missed each question, the top five, with ties broken by how many answered.
 
+### 6b. A study note for the respondent
+
+Code: `studyNote` and `studyNoteRequest` in `server/src/ai/quiz.ts`; `POST /api/attempts/:id/advice`; `web/src/components/StudyNote.vue`.
+
+- Offered on the finished page and above the review, only when the attempt is finished and its results are shown; a held quiz answers 409.
+- The request carries the quiz's title and language, the score, and one line per question in the order the respondent saw them: number, topic, kind, prompt, how it went (right, wrong, partly right, not answered, not scored yet) with the points it cost, and for a missed question the page and supporting sentence from the material. It never carries the name, the section or an email.
+- The reply, by schema: one sentence on what was answered right, and at most three things to review, each with the questions missed and where in the material to look. A page that no missed question carries is dropped before the note is stored, and a reply with nothing to review when something was missed is refused.
+- One AI call per attempt: the note is stored on the response (`advice`, `adviceAt`) and returned from then on; two requests at once share the call. When every scored answer is right a fixed sentence is returned with no AI call. Sixty notes an hour per sender.
+- The note is written to the respondent in the quiz's language and is labeled as the AI's, which can be wrong.
+
+Measured: 4.5 to 6.9 s for the first request, 6 to 9 ms for a stored note.
+
 ### 7. Pictures for questions
 
 Code: `server/src/quiz/illustrate.ts`; `server/src/routes/illustrations.ts`.
@@ -309,7 +321,6 @@ Everything is under `/api`, and every reply is JSON. "Session" means the `qa_ses
 | POST | `/api/auth/code` | Emails a six-digit sign-in code. The reply is the same whether or not the address has an account. | None |
 | POST | `/api/auth/code/verify` | Checks a code and signs in, creating the account for a new address. | None |
 | POST | `/api/auth/login` | Signs in with an email and a password. | None |
-| POST | `/api/auth/register` | Creates an account with a name, email and password. The web app signs people up with codes and Google instead. | None |
 | POST | `/api/auth/logout` | Ends this browser's session. | None |
 | GET | `/api/auth/me` | Who is signed in, or `null`. | None |
 | PATCH | `/api/auth/me` | Sets the name. | Session |
@@ -390,6 +401,7 @@ Every route here needs a session.
 | GET | `/api/attempts/:id` | The attempt so far, with its name and section, in its served order, with the feedback for each answered question (and for every question, once finished), the time left, and the email left for a release. While the results are held, each answer carries only what was given, and the score stays out. On an `end` quiz an open attempt's answers come back as picks (`pick: true`, with what was chosen or typed and nothing judged), and the score stays out until the attempt is finished. | Attempt token |
 | POST | `/api/attempts/:id/answers` | Answers one question: graded and stored. On an `each` quiz the answer is stored once and the reply is the feedback (or, while the results are held, only what was given). On an `end` quiz a different value replaces the stored answer while the attempt is open, and the reply is the pick only. On a quiz whose link is closed (not shared, or archived) it is refused with 409 and `field: "closed"`. Past an overall limit and 30 s of allowance for the network it is refused with 409 and `field: "time"`. | Attempt token |
 | POST | `/api/attempts/:id/finish` | Finishes the attempt and adds up the score; takes a rating from 1 to 5, then or later. Works past a time limit, which is how a timed-out attempt ends. While the results are held, the reply says only how many were answered. On an `end` quiz with the results shown, the reply carries the score and every question's feedback in the order the attempt was shown, the skipped ones included. | Attempt token |
+| POST | `/api/attempts/:id/advice` | The AI's study note for a finished attempt whose results are shown: written once, stored, returned from then on. 409 before finish or while results are held. | Attempt token |
 | POST | `/api/attempts/:id/notify` | An email address to write to when the results are released, kept on the attempt (a second replaces the first). Only while the results are held and the attempt is finished. | Attempt token (sixty an hour per address) |
 
 A quiz counts as shared when its status is `published` and it is not archived; any other quiz answers 404, "This quiz is not shared, or the link is wrong."
@@ -452,10 +464,19 @@ A per-question limit is kept by the page, which moves on at zero; the server doe
 
 | What | Limit |
 | --- | --- |
-| Sign-in codes | One per address per 30 s, five per hour; five tries per code. |
-| Reports | Ten an hour per address (the first address in `X-Forwarded-For`), counted in memory. |
+| Sign-in codes | One per email address per 30 s, five per hour; five tries per code. Ten an hour per sender, and 300 a day in all, so one sender cannot spend the mailbox's daily sends. |
+| Password sign-in | Thirty tries an hour per sender and ten per email address. |
+| Attempts started | 120 an hour per sender: three classes on one school network. |
+| Typed answers and essays | 400 an hour per sender; each may be an AI call. An answer on a quiz checked at the end can be replaced eight times. An identification answer is cut to 200 characters. |
+| AI requests by an account | Sixty an hour for drafts, chat edits and notes; sixty picture searches; sixty uploaded files. |
+| Request size | 512 KB, and 26 MB on the three routes that take a file; a larger body is refused with 413 before it is read. |
+| Reports | Ten an hour per sender, counted in memory. |
 | Leaving an email for a release | Sixty an hour per address, counted the same way: a class on one school network leaves one each within minutes, and a script collecting addresses gets no further. |
 | AI work on a quiz | One job at a time per quiz; a second gets 409. |
+
+A sender is the address Cloudflare reports (`cf-connecting-ip`), or the last entry of `X-Forwarded-For`, the one the nearest proxy appended; the first entry is whatever the sender typed. Every count is kept in memory by the one process and starts over when it restarts. Code: `server/src/limits.ts`.
+
+An account starts with a code sent to its inbox or with Google. No route makes one from an email and a password alone: such a route would let anyone make an account for an address they do not own, and its password would keep working after the owner signed in.
 
 ### What is stored
 
@@ -505,6 +526,8 @@ A per-question limit is kept by the page, which moves on at zero; the server doe
 
 ## Known limits
 
+- **A quiz that shows its results gives up its answers to anyone who finishes it.** Starting an attempt and finishing it with nothing answered returns every answer, reason and source sentence, since that is what the review shows. Practice and Test are for learning and low stakes; Graded holds everything until the maker releases it. One attempt per browser is kept by the browser, not the server.
+- **An exact identification answer returns faster than a near miss**, which goes to the AI. On a quiz checked at the end, the wait tells an attentive respondent whether the typed answer matched exactly.
 - **"Found" is about the quote, not the question.** The check proves the supporting sentence is in the material. It does not prove that the question or its answer key is right, which is why a quiz stays a draft until the teacher shares it.
 - **Short quotes are never found.** A quote of fewer than three words is always "Not found".
 - **Photos and scans are checked against the AI's transcription.** A word the transcription got wrong is wrong in the check too.

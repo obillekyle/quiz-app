@@ -1,4 +1,4 @@
-import { generate, type Part, S } from './gemini.ts'
+import { AiError, generate, type Part, S } from './gemini.ts'
 
 export const KINDS = ['choice', 'truefalse', 'identify', 'essay'] as const
 export const BLOOM = ['remember', 'understand', 'apply', 'analyze', 'evaluate', 'create'] as const
@@ -207,6 +207,129 @@ How to write it:
     schema: S.obj({ note: S.str('Two to four sentences citing questions by number with miss counts.') }),
     temperature: 0.3,
   })
+}
+
+/** One question of one attempt as the study note reads it: how it went, never what was typed or picked. */
+export type StudyRow = {
+  /** 1-based, in the order the attempt showed the questions. */
+  number: number
+  topic: string
+  kind: Kind
+  prompt: string
+  points: number
+  /** Points earned; said, out of `points`, for every question that was missed. */
+  score: number
+  /** `pending`: an essay waiting for the quiz maker's score, neither right nor missed yet. */
+  outcome: 'right' | 'partial' | 'wrong' | 'skipped' | 'pending'
+  /** Where the answer is in the material, when the question has a source. */
+  page: number | null
+  quote: string | null
+}
+
+/** The note as it is stored on the attempt and shown to the respondent. */
+export type StudyNote = { strengths: string; review: { topic: string; why: string; where: string | null }[] }
+
+type StudyQuiz = { title: string; language: 'en' | 'fil'; score: number; total: number; questions: StudyRow[] }
+
+const missedIn = (q: StudyRow) => q.outcome === 'wrong' || q.outcome === 'partial' || q.outcome === 'skipped'
+const pts = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1))
+const outOf = (q: StudyRow) => `${pts(q.score)} of ${pts(q.points)} ${q.points === 1 ? 'point' : 'points'}`
+
+/**
+ * The whole of what the AI is sent about one attempt: the quiz's title and
+ * language, the score, and a line per question with its outcome. A question
+ * that was missed carries what it cost, so the note can put the costliest
+ * topic first, and its page and supporting sentence, when it has them. The
+ * respondent's name, section, email and answers are not in it; the function
+ * is not given them.
+ */
+export function studyNoteRequest(quiz: StudyQuiz) {
+  const lines = quiz.questions.map((q) => {
+    const outcome =
+      q.outcome === 'right'
+        ? 'right'
+        : q.outcome === 'wrong'
+          ? `wrong, ${outOf(q)}`
+          : q.outcome === 'partial'
+            ? `partly right, ${outOf(q)}`
+            : q.outcome === 'skipped'
+              ? `not answered, ${outOf(q)}`
+              : 'not scored yet'
+    const source = !missedIn(q)
+      ? ''
+      : q.quote
+        ? ` | material${q.page ? `, page ${q.page}` : ''}: "${q.quote}"`
+        : q.page
+          ? ` | material, page ${q.page}`
+          : ' | no source in the material'
+    return `Q${q.number} [${q.topic}, ${q.kind}] ${q.prompt} | ${outcome}${source}`
+  })
+  return [
+    `Quiz: ${quiz.title}`,
+    `Language: ${quiz.language === 'fil' ? 'Filipino' : 'English'}`,
+    `Score: ${pts(quiz.score)} of ${pts(quiz.total)} points`,
+    'Questions, in the order the respondent saw them, each with how it went:',
+    ...lines,
+  ].join('\n')
+}
+
+/**
+ * "What to review": a study note for one respondent, from their own finished
+ * attempt. One sentence on what they have down, then at most three topics to
+ * go over, each citing its questions by number and pointing into the
+ * material. It is written to the respondent, after the results are shown,
+ * so it may name the idea a question turned on.
+ *
+ * The reply is not trusted as it comes: strings are trimmed to a line, the
+ * list is cut to three, and a pointer that names a page none of the missed
+ * questions carries is dropped, so a page is never invented. A reply with
+ * nothing to review, when something was missed, is refused as unusable.
+ */
+export async function studyNote(quiz: StudyQuiz) {
+  const system = `You read one respondent's results on a quiz and write them a short study note: what they have down, what to review, and where in the material to look.
+
+How to write it:
+- "strengths": one sentence naming the topics of the questions answered right. With no question answered right, one sentence saying the review below is where to start.
+- "review": the topics to go over again, three at most, the one that cost the most points first. Each item is one topic; questions missed on the same idea go into one item. Every question marked wrong, partly right or not answered was missed and belongs in an item: a question left unanswered counts as much as a wrong one. With more than three topics missed, keep the three that cost the most points. A question marked "not scored yet" is an essay waiting for the quiz maker's score: leave it out.
+  - "topic": a short label for the topic, as the questions give it.
+  - "why": one sentence on what was missed, citing the question numbers it rests on in the form "Q3 and Q7". Say what the material says on the point, from the supporting sentence, not only that the questions were missed.
+  - "where": where in the material to look, from the page and the supporting sentence given with the item's questions, in the form "page 2, the part on alloys". Null when none of the item's questions has a source. Never name a page that is not given with one of the item's questions.
+- Write to the respondent, in the second person: "you answered", "look again at". Plain and specific. No praise padding, no scolding, no greeting, no exclamation marks. Commas and full stops, never dashes.
+- The respondent has been shown the results and the answers of every question listed. Say nothing about the quiz beyond what the lines give.
+- Write in ${quiz.language === 'fil' ? 'Filipino' : 'English'}, the language of the quiz.`
+
+  const res = await generate<StudyNote>({
+    task: 'insight',
+    system,
+    parts: [{ text: studyNoteRequest(quiz) }],
+    schema: S.obj({
+      strengths: S.str('One sentence naming the topics answered right.'),
+      review: S.arr(
+        S.obj({
+          topic: S.str('A short topic label.'),
+          why: S.str('One sentence on what was missed, citing question numbers as "Q3 and Q7".'),
+          where: S.nullable(S.str('As "page 2, the part on alloys"; null without a source.')),
+        }),
+        'At most three items, the most costly first.',
+      ),
+    }),
+    temperature: 0.3,
+  })
+
+  const line = (v: unknown, max: number) =>
+    typeof v === 'string' ? v.replace(/\s*—\s*|\s+–\s+/g, ', ').replace(/\s+/g, ' ').trim().slice(0, max) : ''
+  const pages = new Set(quiz.questions.filter((q) => missedIn(q) && q.page != null).map((q) => q.page))
+  const known = (where: string) => [...where.matchAll(/\b(?:pages?|pahina)\s*(\d+)/gi)].every((m) => pages.has(Number(m[1])))
+  const review = (Array.isArray(res.data?.review) ? res.data.review : [])
+    .map((x) => {
+      const where = line(x?.where, 200)
+      return { topic: line(x?.topic, 120), why: line(x?.why, 400), where: where && known(where) ? where : null }
+    })
+    .filter((x) => x.topic && x.why)
+    .slice(0, 3)
+  const strengths = line(res.data?.strengths, 400)
+  if (!strengths || !review.length) throw new AiError('The AI did not write a usable note. Try again.', 502)
+  return { ...res, data: { strengths, review } satisfies StudyNote }
 }
 
 /**

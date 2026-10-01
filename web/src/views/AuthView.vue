@@ -32,7 +32,9 @@ const via = ref<"mail" | "log">("mail")
 /** Where to go once signed in: the page that sent here, if it is one of ours. */
 const next = computed(() => {
   const n = route.query.next
-  return typeof n === "string" && n.startsWith("/") && !n.startsWith("//")
+  // One slash, then only a path's own characters: "/\\evil.com" reads as
+  // "//evil.com" to a browser.
+  return typeof n === "string" && /^\/(?![/\\])[\w\-./?=&%~+:@,;]*$/.test(n)
     ? n
     : "/app"
 })
