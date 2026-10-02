@@ -467,7 +467,8 @@ export function studyRows(shown: Question[], given: Map<number, any>): StudyRow[
             : a.score > 0
               ? 'partial'
               : 'wrong'
-    return { number: i + 1, topic: q.topic, kind: q.kind, prompt: q.prompt, points: q.points, score: a ? a.score : 0, outcome, page: q.page, quote: q.quote }
+    const answer = q.kind === 'identify' ? (q.accepted[0] ?? null) : q.answer == null ? null : (q.choices[q.answer]?.text ?? null)
+    return { number: i + 1, topic: q.topic, kind: q.kind, prompt: q.prompt, points: q.points, score: a ? a.score : 0, outcome, page: q.page, quote: q.quote, answer, explain: q.explain }
   })
 }
 

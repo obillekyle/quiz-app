@@ -116,8 +116,10 @@ onUnmounted(() => {
         remembers a folded sidebar. The browser's own storage holds display
         preferences (theme, grid or list, sort, print header) and, on a
         respondent's browser, the attempt's id and token so a refresh resumes
-        the quiz, and whether the visit was counted as a view. There are no
-        analytics and no advertising.
+        the quiz, and whether the visit was counted as a view. QuizApp adds no
+        analytics of its own and no advertising. Cloudflare, which serves the
+        site, adds a script that measures page views and load times (Cloudflare
+        Web Analytics).
       </p>
 
       <h2>Deleting your data</h2>

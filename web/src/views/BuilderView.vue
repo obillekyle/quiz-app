@@ -164,7 +164,9 @@ async function draft() {
   working.value = "draft"
   const from = nextKey
   error.value = ""
-  draftPhase.value = "Reading the module"
+  draftPhase.value = hasFiles.value
+    ? "Reading the module"
+    : "Reading the request"
   clearTimeout(phaseTimer)
   phaseTimer = setTimeout(
     () => (draftPhase.value = "Writing the questions"),
@@ -176,7 +178,9 @@ async function draft() {
     })
     // The reply is in; the cards come on the next frame.
     clearTimeout(phaseTimer)
-    draftPhase.value = "Checking each quote against the file"
+    draftPhase.value = hasFiles.value
+      ? "Checking each quote against the file"
+      : "Checking each question"
     await new Promise((r) => requestAnimationFrame(() => r(undefined)))
     adopt(d)
     rising.value = [from, nextKey]
@@ -323,18 +327,27 @@ watch(
 )
 
 // What the AI is doing, in turn, while it works (the steps it really takes).
-const STEPS = {
-  draft: [
-    "Reading the material…",
-    "Writing the questions…",
-    "Checking every quote against the file…",
-  ],
-  chat: [
-    "Reading your message…",
-    "Changing the quiz…",
-    "Checking the quotes again…",
-  ],
-}
+const hasFiles = computed(() => !!saved.value?.sources.length)
+const STEPS = computed(() => ({
+  draft: hasFiles.value
+    ? [
+        "Reading the material…",
+        "Writing the questions…",
+        "Checking every quote against the file…",
+      ]
+    : [
+        "Reading your request…",
+        "Writing the questions…",
+        "Checking each question…",
+      ],
+  chat: hasFiles.value
+    ? [
+        "Reading your message…",
+        "Changing the quiz…",
+        "Checking the quotes again…",
+      ]
+    : ["Reading your message…", "Changing the quiz…", "Checking the quiz…"],
+}))
 const step = ref(0)
 let stepTimer: ReturnType<typeof setInterval> | undefined
 watch(working, (w) => {

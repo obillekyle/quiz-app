@@ -70,7 +70,7 @@ const RULES = `Rules for every question:
 - Base it on the attached material. Copy into "quote", word for word, the one sentence from the material that supports the answer, and give its page number in "page". Never paraphrase the quote, and never add labels, brackets or slashes to it. When the support is a row of a table, quote that row's cells in order, separated by single spaces, exactly as printed. With no material attached, set quote and page to null.
 - Never ask about the material's own instructions, headings or layout.
 - Kinds:
-  - choice: exactly 4 options in "choices", one correct; "answer" is the index (0 to 3) of the correct one. Wrong options are plausible, not silly. Every option's "why" says in one sentence why it is right or wrong, from the material.
+  - choice: exactly 4 options in "choices", one correct; "answer" is the index (0 to 3) of the correct one. Wrong options are plausible, not silly. Every option's "why" says in one sentence why it is right or wrong, from the material. A wrong option's "why" is about that option: it says what is wrong with it or what is true instead, and never reads as support for it.
   - truefalse: "choices" is exactly ["True", "False"] (in Filipino ["Tama", "Mali"]), each with its "why"; "answer" is 0 or 1. Do not make every statement true.
   - identify: answered with a word or short phrase. "accepted" holds the correct answer first, then other forms that also count (synonyms, the number as digits and in words, common spellings). "choices" is empty, "answer" is null.
   - essay: an open question. "rubric" lists 2 to 4 criteria, each with its points, adding up to "points" (3 to 10). "choices" and "accepted" are empty, "answer" is null.
@@ -94,7 +94,7 @@ The quiz:
 - Follow the request for the number and kinds of questions. If it does not say, write 10 questions: mostly multiple choice, with 2 true or false and 2 identification. Write essay questions only when asked.
 - Order the questions as the material teaches the ideas.
 - "title": a short title for the quiz.
-- "reply": one or two sentences to the person who asked, saying what you made (how many questions, which kinds) and anything they should check, such as a question you could not support with a sentence from the material.`
+- "reply": one or two sentences to the person who asked, saying what you made (how many questions, which kinds) and anything they should check, such as a question you could not support with a sentence from the material. Plain words for a teacher: never mention a field name, "null", or how the answer is stored. With no material attached, say that no material was attached, so the questions have no source sentences to check against.`
 
   const parts: Part[] = [...files, { text: `Request: ${request.trim() || 'Make a quiz from this material.'}` }]
   return generate<Draft>({
@@ -135,7 +135,7 @@ How to answer:
 - To put questions into the word bank or the crossword, or take them out, update each one with its "answered" changed; a question that is not identify becomes identify first. Keep "answered" as it is on a question the message does not ask to change.
 - "bankExtra": the word bank's extra words when the message asks to set or change them; otherwise an empty list, which keeps the ones it has.
 - "title": a new title only if the message asks for one; otherwise null.
-- "reply": one or two sentences saying what you changed. If the message is not about the quiz, make no operations and say what you can help with.`
+- "reply": one or two sentences saying what you changed, in plain words for a teacher: never mention a field name, "null", or how the answer is stored. If the message is not about the quiz, make no operations and say what you can help with.`
 
   const current = questions.map(({ itemSet, ...q }, i) => ({ number: i + 1, ...q, answered: itemSet?.style ?? 'typed' }))
   const parts: Part[] = [
@@ -222,6 +222,9 @@ export type StudyRow = {
   /** Where the answer is in the material, when the question has a source. */
   page: number | null
   quote: string | null
+  /** The right answer in words, and the explanation shown after answering: what the note teaches from. */
+  answer: string | null
+  explain: string
 }
 
 /** The note as it is stored on the attempt and shown to the respondent. */
@@ -252,7 +255,8 @@ export function studyNoteRequest(quiz: StudyQuiz) {
         : q.page
           ? ` | material, page ${q.page}`
           : ' | no source in the material'
-    return `Q${q.number} [${q.topic}, ${q.kind}] ${q.prompt} | ${outcome}${source}`
+    const key = missedIn(q) ? `${q.answer ? ` | correct answer: "${q.answer}"` : ''}${q.explain ? ` | explanation: "${q.explain}"` : ''}` : ''
+    return `Q${q.number} [${q.topic}, ${q.kind}] ${q.prompt} | ${outcome}${key}${source}`
   })
   return [
     `Quiz: ${quiz.title}`,
@@ -270,7 +274,7 @@ How to write it:
 - "strengths": one sentence naming the topics of the questions answered right. With no question answered right, one sentence saying the review below is where to start.
 - "review": the topics to go over again, three at most, the one that cost the most points first. Each item is one topic; questions missed on the same idea go into one item. Every question marked wrong, partly right or not answered was missed and belongs in an item: a question left unanswered counts as much as a wrong one. With more than three topics missed, keep the three that cost the most points. A question marked "not scored yet" is an essay waiting for the quiz maker's score: leave it out.
   - "topic": a short label for the topic, as the questions give it.
-  - "why": one sentence on what was missed, citing the question numbers it rests on in the form "Q3 and Q7". Say what the material says on the point, from the supporting sentence, not only that the questions were missed.
+  - "why": one or two sentences that teach the point, then the question numbers it rests on in the form "(Q3 and Q7)". State the idea itself, from the correct answer, the explanation and the supporting sentence given with the questions, and set it against what it is confused with: for example "Chloroplasts are where photosynthesis happens; mitochondria release energy in respiration (Q2)." Never only say that a question was missed, and never only name its topic.
   - "where": where in the material to look, from the page and the supporting sentence given with the item's questions, in the form "page 2, the part on alloys". Null when none of the item's questions has a source. Never name a page that is not given with one of the item's questions.
 - Write to the respondent, in the second person: "you answered", "look again at". Plain and specific. No praise padding, no scolding, no greeting, no exclamation marks. Commas and full stops, never dashes.
 - The respondent has been shown the results and the answers of every question listed. Say nothing about the quiz beyond what the lines give.
@@ -285,7 +289,7 @@ How to write it:
       review: S.arr(
         S.obj({
           topic: S.str('A short topic label.'),
-          why: S.str('One sentence on what was missed, citing question numbers as "Q3 and Q7".'),
+          why: S.str('One or two sentences stating the idea to review itself, then the question numbers as "(Q3 and Q7)".'),
           where: S.nullable(S.str('As "page 2, the part on alloys"; null without a source.')),
         }),
         'At most three items, the most costly first.',
