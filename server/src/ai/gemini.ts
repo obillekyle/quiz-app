@@ -67,12 +67,18 @@ export async function generate<T>(o: Options): Promise<{ data: T; ms: number; mo
 
   const now = Date.now()
   const all = CHAINS[o.task]
-  const chain = [...all.filter((m) => (resting.get(m) ?? 0) <= now), ...all.filter((m) => (resting.get(m) ?? 0) > now)].slice(0, 4)
+  const chain = [...all.filter((m) => (resting.get(m) ?? 0) <= now), ...all.filter((m) => (resting.get(m) ?? 0) > now)]
 
   const started = performance.now()
   let last = ''
-  for (const [i, model] of chain.entries()) {
-    if (i) await sleep(500)
+  // Four tries, and a model whose daily quota is spent does not use one up: it
+  // refuses in milliseconds. Counted, the two models at the head of the draft
+  // chain, both spent by the morning, left a fresh process two real tries.
+  let tries = 0
+  for (const model of chain) {
+    if (tries >= 4) break
+    if (tries) await sleep(500)
+    tries++
     const think = thinking(model)
     let res: Response
     try {
@@ -100,6 +106,7 @@ export async function generate<T>(o: Options): Promise<{ data: T; ms: number; mo
       const body = await res.text().catch(() => '')
       last = String(res.status)
       const daily = res.status === 429 && body.includes('PerDay')
+      if (daily) tries--
       if (res.status === 429 || res.status === 503) resting.set(model, daily ? nextPacificMidnight() : Date.now() + 2 * 60_000)
       console.error(`gemini: ${model} answered ${res.status}${daily ? ' (daily quota spent)' : ''}, trying the next model`)
       continue

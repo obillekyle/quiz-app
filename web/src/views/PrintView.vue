@@ -177,14 +177,14 @@ const setNote = computed(() => {
   if (hasBank.value)
     notes.push(
       fil.value
-        ? "Para sa mga tanong na walang puwesto sa krosword, pumili ng sagot mula sa kahon ng mga salita."
-        : "For an item with a blank, choose the answer from the word bank.",
+        ? "Kung may kahon ng mga salita, doon pumili ng sagot."
+        : "Where a word bank is given, choose the answer from it.",
     )
   if (hasCross.value)
     notes.push(
       fil.value
-        ? "Isulat sa krosword ang sagot ng bawat tanong na may bilang at direksyon."
-        : "For an item with a number and a direction, write the answer in the crossword.",
+        ? "Kung may bilang at direksyon ang tanong, sa krosword isulat ang sagot."
+        : "For an item with a number and a direction, write the answer in the crossword instead.",
     )
   return notes.join(" ")
 })

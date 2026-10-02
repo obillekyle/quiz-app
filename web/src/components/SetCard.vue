@@ -393,8 +393,17 @@ header {
 }
 
 @media (max-width: 640px) {
+  /* The counts give way to the buttons, so move and delete stay on the first row. */
+  .count {
+    order: 3;
+    flex-basis: 100%;
+  }
+  .rows {
+    gap: 16px;
+  }
   .rows li {
     flex-wrap: wrap;
+    gap: 6px 8px;
   }
   .rows .clue {
     flex-basis: calc(100% - 30px);
