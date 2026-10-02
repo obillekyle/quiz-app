@@ -190,13 +190,6 @@ function onKey(e: KeyboardEvent) {
   padding: 16px 20px;
   background: color-mix(in srgb, var(--accent) 10%, var(--surface));
   transition: background 0.3s var(--ease);
-
-  &[data-step="2"] {
-    background: color-mix(in srgb, var(--student) 10%, var(--surface));
-  }
-  &[data-step="3"] {
-    background: color-mix(in srgb, var(--good) 12%, var(--surface));
-  }
 }
 .art-enter-active,
 .art-leave-active {
@@ -288,7 +281,8 @@ function onKey(e: KeyboardEvent) {
   font-weight: 600;
 }
 .share {
-  grid-template-columns: auto 1fr;
+  grid-template-columns: auto auto;
+  justify-content: center;
   align-items: center;
   gap: 16px;
 }
