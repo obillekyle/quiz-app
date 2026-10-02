@@ -224,11 +224,12 @@ Code: `server/src/quiz/grade.ts`; `POST /api/attempts/:id/answers`.
 
 ### 5b. Sets: a word bank and a crossword
 
-An identification question can belong to a set. A set is not a row of its own: each member carries the same `itemSet` (`{ key, style, title, extra }`, `style` being `bank` or `crossword`), and what a respondent is shown is worked out from the members' first accepted answers in `server/src/quiz/sets.ts`, so the bank and the grid cannot disagree with the answer key. A quiz has at most one bank and one crossword.
+An identification question can belong to a set. A set is not a row of its own: each member carries the same `itemSet` (`{ key, style, title, extra }`, `style` being `bank` or `crossword`), and what a respondent is shown is worked out from the members' first accepted answers in `server/src/quiz/sets.ts`, so the bank and the grid cannot disagree with the answer key. A quiz can hold several sets; each has its own `key`. In the editor a set is one card (`web/src/components/SetCard.vue`) with a row per item, and the questions under it stay ordinary identification rows, so answers, scores, results and the CSV need nothing new.
 
 - **Word bank.** The words are every member's first accepted answer plus the set's `extra` words, without repeats, in alphabetical order, so the order says nothing about which word goes where.
 - **Crossword.** `server/src/quiz/crossword.ts` folds each answer to its letters (A to Z and 0 to 9, accents folded), places the longest across, then takes the remaining word with a legal crossing and puts it where it crosses the most letters, then where the grid stays smallest. A position is legal when it crosses at least one equal letter, overwrites nothing, and touches no other word side by side or end to end. The layout uses no randomness, so every respondent and every reprint gets the same grid. A word with no legal crossing is left out of the set and asked as a typed question. Of MERCURY, COPPER, ALLOY, BRASS, DUCTILE, LUSTER and ZINC, five are placed in a 7 by 9 grid and two are left.
 - **Checking.** An answer inside a set is exact and never goes to the AI: a bank pick is compared after the usual normalizing, a crossword answer letter by letter after folding. Four such answers were checked in 79 ms in all.
+- **The AI.** Every question in the draft and edit schemas carries `answered` (`typed`, `bank` or `crossword`), `typed` unless the request asks for a set, and both schemas carry `bankExtra`, the bank's words that answer nothing. The store turns `answered` into the question's `itemSet`. A chat edit is shown each question's current value and keeps a question in the set it was in when the style did not change. On a blank quiz with no material, "2 multiple choice, a word bank with 4 identification questions, and a crossword with 6 words" came back in 24 s with all six words placed in a 7 by 11 grid; "make question 1 a little harder" after it changed no row id and no set.
 - **What is sent.** The shared quiz's payload carries the bank's words and each crossword word's number, place, direction and length. It carries neither `accepted` nor `itemSet`.
 
 ### 6. What to teach again
@@ -297,6 +298,8 @@ Code: `server/src/ai/gemini.ts`. Every call goes to the Gemini API (`generativel
 - **When every try fails:** a 429 when the last answer was a rate limit, a 504 when it was a timeout, and a 502 otherwise, each with a message to try again.
 
 The rest list lives in the server's memory. Without it, every request spent its first seconds on the same refusing model.
+
+**Four tries, and a spent model is free.** A request tries at most four models. A model whose daily quota is spent answers 429 in milliseconds and does not use one of the four up: counted, the two models at the head of the draft chain, both spent by mid-morning of the second day, left a newly started process two real tries, and one draft took 88 s on its fourth model. The draft after it, with the spent models resting, took 19 s.
 
 ## Data model
 
