@@ -222,6 +222,15 @@ Code: `server/src/quiz/grade.ts`; `POST /api/attempts/:id/answers`.
 
 **Stored once, or replaced.** Each answer is one row, by a unique index on the response and the question. On an `each` quiz it is stored once, and answering again returns the first answer's reply. On an `end` quiz an open attempt's answer can be replaced: a different value is graded again and takes the stored row's place (with `overridden` cleared, since a score the quiz maker gave belonged to the answer it replaces), and the same value comes back as it was stored, with no second AI call. An answer is graded as it is saved on either kind of quiz; what an `end` quiz holds back is the reply, which carries the pick and no verdict until the attempt is finished.
 
+### 5b. Sets: a word bank and a crossword
+
+An identification question can belong to a set. A set is not a row of its own: each member carries the same `itemSet` (`{ key, style, title, extra }`, `style` being `bank` or `crossword`), and what a respondent is shown is worked out from the members' first accepted answers in `server/src/quiz/sets.ts`, so the bank and the grid cannot disagree with the answer key. A quiz has at most one bank and one crossword.
+
+- **Word bank.** The words are every member's first accepted answer plus the set's `extra` words, without repeats, in alphabetical order, so the order says nothing about which word goes where.
+- **Crossword.** `server/src/quiz/crossword.ts` folds each answer to its letters (A to Z and 0 to 9, accents folded), places the longest across, then takes the remaining word with a legal crossing and puts it where it crosses the most letters, then where the grid stays smallest. A position is legal when it crosses at least one equal letter, overwrites nothing, and touches no other word side by side or end to end. The layout uses no randomness, so every respondent and every reprint gets the same grid. A word with no legal crossing is left out of the set and asked as a typed question. Of MERCURY, COPPER, ALLOY, BRASS, DUCTILE, LUSTER and ZINC, five are placed in a 7 by 9 grid and two are left.
+- **Checking.** An answer inside a set is exact and never goes to the AI: a bank pick is compared after the usual normalizing, a crossword answer letter by letter after folding. Four such answers were checked in 79 ms in all.
+- **What is sent.** The shared quiz's payload carries the bank's words and each crossword word's number, place, direction and length. It carries neither `accepted` nor `itemSet`.
+
 ### 6. What to teach again
 
 Code: `teachAgainNote` in `server/src/ai/quiz.ts`; `POST /api/quizzes/:id/insight`.
@@ -296,6 +305,7 @@ Defined in `server/schema.ts` with bakery-orm's `table()` and `Field`. `bun run 
 | Table | What a row holds |
 | --- | --- |
 | `users` | A person: `name`, `email` (unique), `passwordHash` (scrypt, when a password is set), `googleId` (unique, when Google is linked), `noticesSeenAt` (when the bell was last opened), `createdAt`. |
+| `bins` | A named folder of quizzes: `name`, `owner`, `createdAt`, `updatedAt`. `quizzes.bin` points at one, or is null; deleting a bin sets it to null. |
 | `sessions` | A signed-in browser: `token` (unique, 64 hex characters), `userId`, `expiresAt` (30 days on), `createdAt`. |
 | `codes` | An emailed sign-in code: `email`, `salt`, `codeHash` (SHA-256 of the salt and the code), `tries`, `sentAt`, `expiresAt`, `usedAt`. Kept for a day, so the hourly limit can count them. |
 | `quizzes` | A quiz: `userId`, `title`, `shareCode` (unique, 8 characters), `language` (`en` or `fil`), `status` (`draft` or `published`), `archived`, `views`, `prompt` (the original request), `insight` and `insightAt` (the note on what to teach again), `createdAt`, `updatedAt`. `sourceName` and `sourcePages` describe the seed's sample quizzes, which have no stored files. The settings page: `description`, `icon` (an Iconify id such as `fluent-emoji-flat:test-tube`), `image` (the cover's path under `data/uploads`, `<quizId>/cover-<time>-<random>.<ext>`), `color` (`#rrggbb` in lowercase, or null for the palette color the id picks), `shuffleQuestions`, `shuffleOptions`, `timeMode` (`none`, `question` or `overall`) and `timeLimit` in seconds, `allowRetake`, `showResults` and `resultsReleasedAt` (set by a release; results show when either says so), `showHints` (off: no "Show hint" on the questions), `aiCheck`, `aiEssay`, `feedback` (`each`, the default: an answer is checked when it is confirmed and locked from then on; `end`: answers are saved, changeable until the attempt is finished, and shown checked then). Practice, Test and Graded on the Sharing page are fixed values of `feedback`, `showResults`, `showHints` and `allowRetake`. |
@@ -338,6 +348,9 @@ Every route here needs a session, except the cover's own address.
 | Method | Path | Purpose |
 | --- | --- | --- |
 | GET | `/api/quizzes` | The caller's quizzes, newest edit first, each with its question count, its finished responses (`responses`) and its settings. |
+| POST | `/api/quizzes/blank` | A quiz with no request and no questions, for writing by hand. The editor drafts nothing for it. |
+| GET, POST | `/api/bins` | The caller's bins with the number of quizzes in each; a new bin from a `name` of 1 to 80 characters. |
+| PATCH, DELETE | `/api/bins/:id` | Rename a bin; delete it, its quizzes kept and returned to no bin. A bin that is not the caller's is a 404. |
 | POST | `/api/quizzes` | Starts a quiz from a request and uploaded files; answers with its id at once. |
 | GET | `/api/quizzes/:id` | The quiz with its settings, its questions with their check states, its files and its chat. |
 | PUT | `/api/quizzes/:id` | Saves the title and every question as edited (pictures included), and checks the quotes again. |
