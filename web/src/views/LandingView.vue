@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import LogoMark from "../components/LogoMark.vue"
+import Icon from "../components/Icon.vue"
 const options = [
   { letter: "A", text: "Gallium" },
   { letter: "B", text: "Mercury", correct: true },
@@ -30,6 +32,16 @@ const claimRows = [
 
 <template>
   <section class="hero">
+    <!-- Pieces of the app that burst out from behind the headline. -->
+    <span class="g check" aria-hidden="true">
+      <Icon name="check" :size="20" />
+    </span>
+    <span class="g opt" aria-hidden="true"><b>B.</b> Mercury</span>
+    <span class="g bar" aria-hidden="true"><i /></span>
+    <span class="g quote" aria-hidden="true">&ldquo;</span>
+    <span class="g score" aria-hidden="true">67 / 69</span>
+    <span class="g q" aria-hidden="true"><LogoMark :size="30" /></span>
+
     <h1>Turn your notes into a quiz.</h1>
     <p class="lede">
       Upload a PDF or photos of a handout, in English or Filipino. Every
@@ -128,6 +140,130 @@ const claimRows = [
   align-items: center;
   text-align: center;
   padding: clamp(40px, 8vh, 96px) clamp(16px, 4vw, 40px) 0;
+  position: relative;
+  overflow-x: clip;
+
+  > * {
+    position: relative;
+    z-index: 1;
+  }
+}
+
+.g {
+  position: absolute;
+  z-index: 0;
+  opacity: var(--o, 0.7);
+  animation: burst 0.85s var(--ease) var(--d, 0.35s) both;
+}
+
+.check {
+  left: 9%;
+  top: 130px;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--good);
+  color: white;
+  --fx: 38vw;
+  --fy: 60px;
+  --d: 0.35s;
+}
+
+.opt {
+  right: 8%;
+  top: 120px;
+  padding: 8px 14px;
+  border: 1px solid color-mix(in srgb, var(--good) 45%, transparent);
+  border-radius: var(--radius-md);
+  background: var(--good-soft);
+  font-size: 14px;
+  color: var(--ink);
+  --o: 0.85;
+  --fx: -36vw;
+  --fy: 80px;
+  --d: 0.42s;
+}
+
+.bar {
+  left: 6%;
+  top: 250px;
+  width: 120px;
+  height: 8px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--student) 18%, transparent);
+  --fx: 40vw;
+  --fy: -40px;
+  --d: 0.5s;
+
+  i {
+    display: block;
+    width: 70%;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--student);
+  }
+}
+
+.quote {
+  left: 17%;
+  top: 300px;
+  font-size: 72px;
+  line-height: 1;
+  font-weight: 700;
+  color: var(--accent);
+  --o: 0.35;
+  --fx: 30vw;
+  --fy: -120px;
+  --d: 0.55s;
+}
+
+.score {
+  right: 13%;
+  top: 310px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  font:
+    600 13px/1 ui-monospace,
+    monospace;
+  color: var(--good);
+  --o: 0.85;
+  --fx: -30vw;
+  --fy: -130px;
+  --d: 0.6s;
+}
+
+.q {
+  right: 4%;
+  top: 215px;
+  color: var(--accent);
+  transform: rotate(-12deg);
+  --o: 0.5;
+  --fx: -42vw;
+  --fy: 0px;
+  --d: 0.48s;
+}
+
+@keyframes burst {
+  from {
+    opacity: 0;
+    transform: translate(var(--fx, 0px), var(--fy, 0px)) scale(0.3);
+  }
+}
+
+@media (max-width: 900px) {
+  .g {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .g {
+    animation: none;
+  }
 }
 
 h1 {
