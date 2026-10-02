@@ -142,13 +142,24 @@ const ORDER: Kind[] = ["choice", "truefalse", "identify", "essay"]
 const LETTERS = "ABCDEFGH"
 const ROMAN = ["I", "II", "III", "IV"]
 
-const bank = computed(() => data.value?.sets?.find((x) => x.style === "bank"))
-const cross = computed(() =>
-  data.value?.sets?.find((x) => x.style === "crossword"),
+const hasBank = computed(
+  () => !!data.value?.sets?.some((x) => x.style === "bank"),
 )
-const crossEntries = computed(() =>
-  (data.value?.questions ?? []).flatMap((q) => (q.entry ? [q.entry] : [])),
+const hasCross = computed(
+  () => !!data.value?.sets?.some((x) => x.style === "crossword"),
 )
+/** The set an item opens on this paper: its box or grid prints above the set's first item, whatever the order. */
+function opens(items: Item[], it: Item) {
+  const k = it.q.itemSet?.key
+  const set = k ? data.value?.sets?.find((x) => x.key === k) : undefined
+  return set && items.find((x) => x.q.itemSet?.key === k) === it
+    ? set
+    : undefined
+}
+const entriesOf = (key: string) =>
+  (data.value?.questions ?? []).flatMap((q) =>
+    q.itemSet?.key === key && q.entry ? [q.entry] : [],
+  )
 const place = (q: Question) =>
   q.entry
     ? `${q.entry.number} ${
@@ -163,13 +174,13 @@ const place = (q: Question) =>
     : ""
 const setNote = computed(() => {
   const notes: string[] = []
-  if (bank.value)
+  if (hasBank.value)
     notes.push(
       fil.value
         ? "Para sa mga tanong na walang puwesto sa krosword, pumili ng sagot mula sa kahon ng mga salita."
         : "For an item with a blank, choose the answer from the word bank.",
     )
-  if (cross.value)
+  if (hasCross.value)
     notes.push(
       fil.value
         ? "Isulat sa krosword ang sagot ng bawat tanong na may bilang at direksyon."
@@ -443,24 +454,30 @@ const print = () => window.print()
             {{ directions(sec.kind, sec.items) }}
             <template v-if="sec.kind === 'identify'">{{ setNote }}</template>
           </p>
-          <template v-if="sec.kind === 'identify'">
-            <div v-if="bank" class="wordbank">
-              <b>{{ bank.title || "Word bank" }}</b>
-              <ul>
-                <li v-for="w in bank.words" :key="w">{{ w }}</li>
-              </ul>
-            </div>
-            <div v-if="cross && crossEntries.length" class="crossword">
-              <CrosswordGrid
-                :rows="cross.rows"
-                :cols="cross.cols"
-                :entries="crossEntries"
-                print
-              />
-            </div>
-          </template>
           <ol class="items">
             <li v-for="it in sec.items" :key="it.q.id ?? it.n" class="item">
+              <template v-if="opens(sec.items, it)">
+                <div
+                  v-if="opens(sec.items, it)!.style === 'bank'"
+                  class="wordbank"
+                >
+                  <b>{{ opens(sec.items, it)!.title || "Word bank" }}</b>
+                  <ul>
+                    <li v-for="w in opens(sec.items, it)!.words" :key="w">
+                      {{ w }}
+                    </li>
+                  </ul>
+                </div>
+                <div v-else class="crossword">
+                  <b>{{ opens(sec.items, it)!.title || "Crossword" }}</b>
+                  <CrosswordGrid
+                    :rows="opens(sec.items, it)!.rows"
+                    :cols="opens(sec.items, it)!.cols"
+                    :entries="entriesOf(opens(sec.items, it)!.key)"
+                    print
+                  />
+                </div>
+              </template>
               <p class="stem">
                 <span
                   v-if="sec.kind !== 'essay' && !it.q.entry"
@@ -768,6 +785,8 @@ const print = () => window.print()
   }
 }
 .crossword {
+  display: grid;
+  gap: 4px;
   margin: 4px 0 10px;
   break-inside: avoid;
 }

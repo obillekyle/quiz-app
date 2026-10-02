@@ -6,6 +6,7 @@ import LogoMark from "../components/LogoMark.vue"
 import PromptBox from "../components/PromptBox.vue"
 import DraftPreview from "../components/DraftPreview.vue"
 import QuestionCard from "../components/QuestionCard.vue"
+import SetCard from "../components/SetCard.vue"
 import { api, ApiError } from "../composables/api"
 import {
   blankQuestion,
@@ -13,7 +14,7 @@ import {
   KINDS,
   refreshQuizzes,
   useQuizzes,
-  type AnswerStyle,
+  type ItemSet,
   type FullQuiz,
   type Kind,
   type Question,
@@ -121,7 +122,7 @@ let phaseTimer: ReturnType<typeof setTimeout> | undefined
 function adopt(d: FullQuiz) {
   saved.value = d
   title.value = d.quiz.title
-  questions.value = d.questions.map(keyed)
+  questions.value = together(d.questions.map(keyed))
 }
 
 const strip = (list: Question[]) =>
@@ -362,32 +363,80 @@ function add(kind: Kind) {
       ?.focus(),
   )
 }
-function setAnswered(i: number, style: AnswerStyle) {
-  const q = questions.value[i]
-  if (!q) return
-  if (style === "typed") {
-    q.itemSet = null
-    return
-  }
-  const like = questions.value.find((x) => x.itemSet?.style === style)?.itemSet
-  q.itemSet = like
-    ? { ...like, extra: [...like.extra] }
-    : {
-        key: style,
-        style,
-        title: style === "bank" ? "Word bank" : "Crossword",
-        extra: [],
+// ---- sets: a word bank or a crossword is one card holding its questions -----------
+type Keyed = Question & { _key: number }
+type Block = { key: string; set: string | null; at: number; items: Keyed[] }
+/** The list as cards: a set's questions together where its first one stands, every other question alone. */
+function blocksOf(list: Keyed[]) {
+  const out: Block[] = []
+  const seen = new Map<string, Block>()
+  for (const q of list) {
+    const k = q.itemSet?.key
+    const b = k ? seen.get(k) : undefined
+    if (b) b.items.push(q)
+    else {
+      const made: Block = {
+        key: k ? `set-${k}` : `q-${q._key}`,
+        set: k ?? null,
+        at: 0,
+        items: [q],
       }
+      if (k) seen.set(k, made)
+      out.push(made)
+    }
+  }
+  let at = 0
+  for (const b of out) {
+    b.at = at
+    at += b.items.length
+  }
+  return out
 }
-function setExtra(words: string[]) {
-  for (const q of questions.value)
-    if (q.itemSet?.style === "bank") q.itemSet.extra = [...words]
-}
+const blocks = computed(() => blocksOf(questions.value))
+/** A set's questions sit together in the quiz, in the card's order. */
+const together = (list: Keyed[]) => blocksOf(list).flatMap((b) => b.items)
 
-function move(i: number, by: number) {
-  const list = questions.value
-  const [q] = list.splice(i, 1)
-  list.splice(i + by, 0, q!)
+function member(set: ItemSet) {
+  const q = blankQuestion("identify")
+  q.itemSet = { ...set, extra: [...set.extra] }
+  return keyed(q)
+}
+function addSet(style: ItemSet["style"]) {
+  const set: ItemSet = {
+    key: `${style}-${Date.now().toString(36)}`,
+    style,
+    title: style === "bank" ? "Word bank" : "Crossword",
+    extra: [],
+  }
+  questions.value.push(member(set), member(set), member(set))
+  nextTick(() =>
+    document
+      .querySelector<HTMLElement>(".qlist > :last-child textarea")
+      ?.focus(),
+  )
+}
+function addToSet(b: Block) {
+  const last = questions.value.indexOf(b.items.at(-1)!)
+  questions.value.splice(last + 1, 0, member(b.items[0]!.itemSet!))
+}
+function removeItem(q: Question) {
+  const i = questions.value.indexOf(q as Keyed)
+  if (i >= 0) questions.value.splice(i, 1)
+}
+function removeSet(b: Block) {
+  questions.value = questions.value.filter((q) => !b.items.includes(q))
+}
+function setTitle(b: Block, text: string) {
+  for (const q of b.items) q.itemSet!.title = text
+}
+function setExtra(b: Block, words: string[]) {
+  for (const q of b.items) q.itemSet!.extra = [...words]
+}
+function moveBlock(n: number, by: number) {
+  const list = blocks.value.map((b) => b.items)
+  const [x] = list.splice(n, 1)
+  list.splice(n + by, 0, x!)
+  questions.value = list.flat()
 }
 
 const counts = computed(() => {
@@ -754,30 +803,49 @@ const answeredBy = computed(
             </p>
 
             <div class="qlist">
-              <QuestionCard
-                v-for="(q, i) in questions"
-                :key="q._key"
-                v-model="questions[i]!"
-                :index="i"
-                :total="questions.length"
-                :language="saved.quiz.language"
-                :quiz-id="saved.quiz.id"
-                :style="{ '--i': q._key - rising[0] }"
-                :data-rise="rises(q._key) || undefined"
-                :data-changed="changed.has(q._key) || undefined"
-                :data-new="added.has(q._key) || undefined"
-                @remove="questions.splice(i, 1)"
-                @answered="setAnswered(i, $event)"
-                @extra="setExtra"
-                @up="move(i, -1)"
-                @down="move(i, 1)"
-              />
+              <template v-for="(b, n) in blocks" :key="b.key">
+                <SetCard
+                  v-if="b.set"
+                  :items="b.items"
+                  :first="b.at"
+                  :can-up="n > 0"
+                  :can-down="n < blocks.length - 1"
+                  @add="addToSet(b)"
+                  @remove="removeItem"
+                  @remove-all="removeSet(b)"
+                  @title="setTitle(b, $event)"
+                  @extra="setExtra(b, $event)"
+                  @up="moveBlock(n, -1)"
+                  @down="moveBlock(n, 1)"
+                />
+                <QuestionCard
+                  v-else
+                  v-model="questions[b.at]!"
+                  :index="b.at"
+                  :total="questions.length"
+                  :language="saved.quiz.language"
+                  :quiz-id="saved.quiz.id"
+                  :style="{ '--i': b.items[0]!._key - rising[0] }"
+                  :data-rise="rises(b.items[0]!._key) || undefined"
+                  :data-changed="changed.has(b.items[0]!._key) || undefined"
+                  :data-new="added.has(b.items[0]!._key) || undefined"
+                  @remove="questions.splice(b.at, 1)"
+                  @up="moveBlock(n, -1)"
+                  @down="moveBlock(n, 1)"
+                />
+              </template>
             </div>
 
             <div class="add-row">
               <span>Add a question:</span>
               <button v-for="k in KINDS" :key="k" btn @click="add(k)">
                 <Icon name="plus" :size="16" /> {{ KIND_LABEL[k] }}
+              </button>
+              <button btn @click="addSet('bank')">
+                <Icon name="plus" :size="16" /> Word bank
+              </button>
+              <button btn @click="addSet('crossword')">
+                <Icon name="plus" :size="16" /> Crossword
               </button>
             </div>
           </template>

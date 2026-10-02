@@ -202,8 +202,26 @@ export function clean(q: any, n: number): QuestionDraft {
     page: Number.isInteger(q?.page) ? q.page : null,
     quote: str(q?.quote, 2000) || null,
     ...picture(q),
-    itemSet: kind === 'identify' ? itemSetOf(q?.itemSet) : null,
+    itemSet: kind === 'identify' ? (itemSetOf(q?.itemSet) ?? itemSetOf(SETS[q?.answered as 'bank' | 'crossword'])) : null,
   }
+}
+
+const SETS: Record<'bank' | 'crossword', ItemSet> = {
+  bank: { key: 'bank', style: 'bank', title: 'Word bank', extra: [] },
+  crossword: { key: 'crossword', style: 'crossword', title: 'Crossword', extra: [] },
+}
+
+/**
+ * Makes every member of the word bank carry the same extra words: the ones
+ * given, or else the ones a member already has. The AI names a question's
+ * set by style alone, so a question it adds joins the bank without them.
+ */
+export function shareSets<T extends QuestionDraft>(list: T[], extra?: string[] | null): T[] {
+  const given = (extra ?? []).map((w) => str(w, 60)).filter(Boolean).slice(0, 12)
+  const kept = list.find((q) => q.itemSet?.style === 'bank' && q.itemSet.extra.length)?.itemSet?.extra ?? []
+  const answers = new Set(list.filter((q) => q.itemSet?.style === 'bank').map((q) => (q.accepted[0] ?? '').trim().toLowerCase()))
+  const words = (given.length ? given : kept).filter((w) => !answers.has(w.toLowerCase()))
+  return list.map((q) => (q.itemSet?.style === 'bank' ? { ...q, itemSet: { ...q.itemSet, extra: words } } : q))
 }
 
 function itemSetOf(v: any): ItemSet | null {

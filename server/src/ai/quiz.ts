@@ -32,7 +32,12 @@ export type QuestionDraft = {
   imageCredit?: { from: 'upload' | 'module' | 'wikimedia'; text: string; url: string | null } | null
   /** identify: the set this question is answered in, shared by every question with the same key. */
   itemSet?: ItemSet | null
+  /** As the AI writes it: how an identify question is answered. The store turns it into `itemSet`. */
+  answered?: Answered
 }
+
+export const ANSWERED = ['typed', 'bank', 'crossword'] as const
+export type Answered = (typeof ANSWERED)[number]
 
 /** A set of identification questions: picked from a word bank, or written into a crossword. `extra` holds bank words that are nobody's answer. */
 export type ItemSet = { key: string; style: 'bank' | 'crossword'; title: string; extra: string[] }
@@ -51,8 +56,14 @@ const QUESTION = S.obj(
     bloom: S.enum(BLOOM),
     page: S.nullable(S.int('1-based page the quote is on.')),
     quote: S.nullable(S.str('The supporting sentence, copied word for word from the material.')),
+    answered: S.enum(ANSWERED, 'identify only: typed, picked from the word bank, or written into the crossword. "typed" for every other kind.'),
   },
-  ['kind', 'prompt', 'choices', 'answer', 'accepted', 'rubric', 'points', 'explain', 'topic', 'bloom', 'page', 'quote'],
+  ['kind', 'prompt', 'choices', 'answer', 'accepted', 'rubric', 'points', 'explain', 'topic', 'bloom', 'page', 'quote', 'answered'],
+)
+
+const BANK_EXTRA = S.arr(
+  S.str(),
+  'With a word bank: 2 to 4 words of the same kind as its answers that are the answer to no question. Empty without a word bank.',
 )
 
 const RULES = `Rules for every question:
@@ -63,12 +74,16 @@ const RULES = `Rules for every question:
   - truefalse: "choices" is exactly ["True", "False"] (in Filipino ["Tama", "Mali"]), each with its "why"; "answer" is 0 or 1. Do not make every statement true.
   - identify: answered with a word or short phrase. "accepted" holds the correct answer first, then other forms that also count (synonyms, the number as digits and in words, common spellings). "choices" is empty, "answer" is null.
   - essay: an open question. "rubric" lists 2 to 4 criteria, each with its points, adding up to "points" (3 to 10). "choices" and "accepted" are empty, "answer" is null.
+- "answered" says how an identify question is answered, and is "typed" for every other kind:
+  - "typed": the respondent types the answer. Use this unless the request asks for a word bank or a crossword.
+  - "bank": the respondent picks the answer from a word bank shared by every "bank" question. The bank is made from each such question's first accepted answer, so each of those answers is different, and a short word or phrase.
+  - "crossword": the first accepted answer is written into a crossword grid and the question is its clue. That answer is a single word of 3 to 12 letters with no spaces, hyphens or digits, each crossword answer is different, and the answers share letters so that they can cross. Write at least 5 crossword questions when a crossword is asked for.
 - "points" is 1 for choice, truefalse and identify.
 - "explain": one or two sentences shown after answering.
 - "topic": a short label taken from the material's headings. "bloom": the level of thinking the question asks for; spread the levels instead of asking only for recall.
 - Write in the language the request asks for; if it does not say, in the language of the material ("en" English, "fil" Filipino).`
 
-export type Draft = { title: string; language: 'en' | 'fil'; reply: string; questions: QuestionDraft[] }
+export type Draft = { title: string; language: 'en' | 'fil'; reply: string; questions: QuestionDraft[]; bankExtra?: string[] }
 
 export async function draftQuiz(request: string, files: Part[]) {
   const system = `You write quizzes for teachers and students in the Philippines from material they provide.
@@ -91,6 +106,7 @@ The quiz:
       language: S.enum(['en', 'fil']),
       reply: S.str(),
       questions: S.arr(QUESTION),
+      bankExtra: BANK_EXTRA,
     }),
     temperature: 0.4,
   })
@@ -102,7 +118,7 @@ export type Op =
   | { op: 'remove'; number: number }
   | { op: 'move'; number: number; to: number }
 
-export type Refine = { reply: string; title: string | null; ops: Op[] }
+export type Refine = { reply: string; title: string | null; ops: Op[]; bankExtra?: string[] }
 
 export async function refineQuiz(message: string, title: string, questions: QuestionDraft[], material: Part[]) {
   const system = `You edit a quiz someone is building, following their message.
@@ -116,10 +132,12 @@ How to answer:
   - remove: delete question "number".
   - move: move question "number" so that it becomes number "to".
   "number" always refers to the quiz as it is now, before any of your operations.
+- To put questions into the word bank or the crossword, or take them out, update each one with its "answered" changed; a question that is not identify becomes identify first. Keep "answered" as it is on a question the message does not ask to change.
+- "bankExtra": the word bank's extra words when the message asks to set or change them; otherwise an empty list, which keeps the ones it has.
 - "title": a new title only if the message asks for one; otherwise null.
 - "reply": one or two sentences saying what you changed. If the message is not about the quiz, make no operations and say what you can help with.`
 
-  const current = questions.map((q, i) => ({ number: i + 1, ...q }))
+  const current = questions.map(({ itemSet, ...q }, i) => ({ number: i + 1, ...q, answered: itemSet?.style ?? 'typed' }))
   const parts: Part[] = [
     ...material,
     { text: `The quiz now, titled "${title}":\n${JSON.stringify(current)}` },
@@ -139,7 +157,7 @@ How to answer:
     task: 'edit',
     system,
     parts,
-    schema: S.obj({ reply: S.str(), title: S.nullable(S.str()), ops: S.arr(op) }),
+    schema: S.obj({ reply: S.str(), title: S.nullable(S.str()), ops: S.arr(op), bankExtra: BANK_EXTRA }),
     temperature: 0.3,
   })
 }

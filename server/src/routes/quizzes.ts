@@ -10,7 +10,7 @@ import { resultsMail, sendMail } from '../mail.ts'
 import { whenRead } from '../quiz/read.ts'
 import { attachSources, loadSources, materialParts, removeFiles, type Source } from '../quiz/sources.ts'
 import { within } from '../limits.ts'
-import { addMessage, clean, exclusive, fullQuiz, newShareCode, ownQuiz, saveQuestions, settingsOf, type Saving } from '../quiz/store.ts'
+import { addMessage, clean, exclusive, fullQuiz, newShareCode, ownQuiz, saveQuestions, settingsOf, shareSets, type Saving } from '../quiz/store.ts'
 
 export const quizzes = new Hono<{ Variables: { user: User } }>()
 
@@ -148,7 +148,7 @@ quizzes.post('/:id/draft', async (c) => {
     if (sources.length && !parts.length && !quiz.prompt)
       throw new HTTPException(422, { message: 'None of the files could be read. Attach them again, or describe the quiz.' })
     const { data, ms, model } = await draftQuiz(String(quiz.prompt ?? ''), parts)
-    const list = data.questions.map((q, i) => clean(q, i + 1))
+    const list = shareSets(data.questions.map((q, i) => clean(q, i + 1)), data.bankExtra)
     await saveQuestions(id, list)
     await DB.Update.table('quizzes')
       .set({ title: data.title.slice(0, 160) || 'Untitled quiz', language: data.language === 'fil' ? 'fil' : 'en' })
@@ -176,7 +176,7 @@ quizzes.post('/:id/chat', async (c) => {
 
     if (!current.questions.length) {
       const { data, ms, model } = await draftQuiz(text, parts)
-      await saveQuestions(id, data.questions.map((q, i) => clean(q, i + 1)))
+      await saveQuestions(id, shareSets(data.questions.map((q, i) => clean(q, i + 1)), data.bankExtra))
       await DB.Update.table('quizzes').set({ title: data.title.slice(0, 160) }).where('quizzes.id', id).run()
       await addMessage(id, 'ai', data.reply, { model, ms })
       return c.json(await fullQuiz(id))
@@ -194,9 +194,12 @@ quizzes.post('/:id/chat', async (c) => {
       before,
       data.ops ?? [],
       (q) => q,
-      (old, q) => ({ ...q, id: old.id, image: old.image ?? null, imageAlt: old.imageAlt ?? null, imageCredit: old.imageCredit ?? null, itemSet: q.kind === 'identify' ? (old.itemSet ?? null) : null }),
+      (old, q) => ({ ...q, id: old.id, image: old.image ?? null, imageAlt: old.imageAlt ?? null, imageCredit: old.imageCredit ?? null,
+        // The AI names a set by its style alone; a question that stays in its style keeps the set it was in.
+        itemSet: old.itemSet && q.kind === 'identify' && q.answered === old.itemSet.style ? old.itemSet : undefined,
+      }),
     ).map((q, i) => ({ ...clean(q, i + 1), id: q.id ?? null }))
-    await saveQuestions(id, after)
+    await saveQuestions(id, shareSets(after, data.bankExtra))
     if (data.title) await DB.Update.table('quizzes').set({ title: data.title.slice(0, 160) }).where('quizzes.id', id).run()
     await addMessage(id, 'ai', data.reply, { model, ms, ops: (data.ops ?? []).map((o) => o.op) })
     return c.json(await fullQuiz(id))

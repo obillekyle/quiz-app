@@ -150,7 +150,6 @@ export type ItemSet = {
   /** Word bank: words that are nobody's answer. */
   extra: string[]
 }
-export type AnswerStyle = "typed" | ItemSet["style"]
 
 export type Message = {
   id: number
