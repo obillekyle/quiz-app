@@ -4,6 +4,7 @@ import { useRouter } from "vue-router"
 import Icon from "./Icon.vue"
 import { useAuth } from "../composables/auth"
 import { useAction } from "../composables/fetch"
+import { useOnboarding } from "../composables/onboarding"
 
 defineProps<{ folded?: boolean }>()
 const router = useRouter()
@@ -24,6 +25,11 @@ const signOut = useAction(async () => {
   await logout()
   await router.replace("/")
 })
+const onboarding = useOnboarding()
+function tutorial() {
+  menu.value?.hidePopover()
+  onboarding.show()
+}
 function go(to: string) {
   menu.value?.hidePopover()
   router.push(to)
@@ -62,6 +68,9 @@ function go(to: string) {
       @click="go('/app/settings')"
     >
       <Icon name="settings" :size="18" /> Settings
+    </button>
+    <button type="button" class="row" @click="tutorial">
+      <Icon name="info" :size="18" /> Getting started
     </button>
     <button
       type="button"

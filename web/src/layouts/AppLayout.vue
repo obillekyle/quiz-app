@@ -3,9 +3,12 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import AccountMenu from "../components/AccountMenu.vue"
 import NotificationsMenu from "../components/NotificationsMenu.vue"
+import Onboarding from "../components/Onboarding.vue"
 import Icon from "../components/Icon.vue"
 import LogoMark from "../components/LogoMark.vue"
+import { useAuth } from "../composables/auth"
 import { useCookie } from "../composables/cookie"
+import { useOnboarding } from "../composables/onboarding"
 import { pageCrumb } from "../composables/crumb"
 import { api } from "../composables/api"
 import { quizColor, refreshQuizzes, useQuizzes } from "../composables/quizzes"
@@ -13,6 +16,17 @@ import { toast } from "../composables/toast"
 
 const route = useRoute()
 const router = useRouter()
+
+// The get-started tutorial opens the first time an account uses the app in this browser.
+const { userdata } = useAuth()
+const { firstRun } = useOnboarding()
+watch(
+  () => userdata.value?.id,
+  (id) => {
+    if (id != null) firstRun(id)
+  },
+  { immediate: true },
+)
 
 // New quiz makes a blank quiz and opens it in the editor; the prompt box on Home is the way to an AI draft.
 const creating = ref(false)
@@ -368,6 +382,7 @@ function closeSearch() {
     <main ref="contentEl" class="content">
       <RouterView />
     </main>
+    <Onboarding />
   </div>
 </template>
 
