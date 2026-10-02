@@ -4,6 +4,7 @@ import { bodyLimit } from 'hono/body-limit'
 import { HTTPException } from 'hono/http-exception'
 import { AiError } from './ai/gemini.ts'
 import { auth } from './routes/auth.ts'
+import { bins } from './routes/bins.ts'
 import { illustrations } from './routes/illustrations.ts'
 import { respond } from './routes/public.ts'
 import { notifications } from './routes/notifications.ts'
@@ -28,6 +29,7 @@ app.use('*', (c, next) => (TAKES_FILES.test(c.req.path) ? file : text)(c, next))
 
 app.route('/auth', auth)
 app.route('/quizzes', quizzes)
+app.route('/bins', bins)
 app.route('/notifications', notifications)
 app.route('/responses', responses)
 app.route('/uploads', uploads)

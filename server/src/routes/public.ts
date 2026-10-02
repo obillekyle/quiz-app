@@ -5,6 +5,7 @@ import { HTTPException } from 'hono/http-exception'
 import { studyNote, type QuestionDraft, type StudyNote, type StudyRow } from '../ai/quiz.ts'
 import { addressOf, within } from '../limits.ts'
 import { gradeChoice, gradeEssay, gradeTyped, type Graded } from '../quiz/grade.ts'
+import { gradeInSet, setsOf } from '../quiz/sets.ts'
 import { coverUrl, fullQuiz, type Question } from '../quiz/store.ts'
 
 /**
@@ -61,6 +62,7 @@ respond.get('/q/:code', async (c) => {
   const full = await fullQuiz(Number(q.id))
   const owner = await DB.from('users').where('users.id', q.userId).fetch()
   const rules = rulesOf(q)
+  const inSets = setsOf(full.questions)
   return c.json({
     quiz: {
       title: full.quiz.title,
@@ -97,7 +99,10 @@ respond.get('/q/:code', async (c) => {
       image: x.image ?? null,
       imageAlt: x.imageAlt ?? null,
       imageCredit: x.imageCredit ?? null,
+      set: inSets.member.get(x.id) ?? null,
+      entry: inSets.entries.get(x.id) ?? null,
     })),
+    sets: inSets.sets,
   })
 })
 
@@ -463,11 +468,16 @@ respond.post('/attempts/:id/answers', async (c) => {
   if ((q.kind === 'identify' || q.kind === 'essay') && !within(typedFrom, addressOf(c), 2000))
     return c.json({ error: 'Too many answers were sent from here in the last hour. Try again in a few minutes.', field: 'busy' }, 429)
 
+  // In a set only when the page showed it as one: a crossword word the grid
+  // could not place is typed and checked like any other.
+  const inSet = q.itemSet && setsOf(full.questions).member.has(q.id) ? q.itemSet.style : null
   const result: Graded =
     q.kind === 'choice' || q.kind === 'truefalse'
       ? gradeChoice(q, choice)
       : q.kind === 'identify'
-        ? await gradeTyped(q, text ?? '', rules.ai)
+        ? inSet
+          ? gradeInSet(q, inSet, text ?? '')
+          : await gradeTyped(q, text ?? '', rules.ai)
         : await gradeEssay(q, text ?? '', rules.ai)
   const row = {
     choice,

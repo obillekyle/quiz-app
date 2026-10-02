@@ -3,12 +3,15 @@ import DB from 'bakery-orm'
 import { HTTPException } from 'hono/http-exception'
 import { ground } from '../ai/ground.ts'
 import { NAME as ILLUSTRATION } from './illustrate.ts'
-import { BLOOM, KINDS, type QuestionDraft } from '../ai/quiz.ts'
+import { BLOOM, KINDS, type ItemSet, type QuestionDraft } from '../ai/quiz.ts'
+import { setsOf, type Placed } from './sets.ts'
 import { allPages, loadSources, type Source } from './sources.ts'
 
 /** A question as the builder sees it: the AI's shape plus its id and the check. */
 export type Question = QuestionDraft & {
   id: number
+  /** A crossword word's place in the grid, worked out from the set's answers. */
+  entry?: Placed | null
   /**
    * found: the quote is in the file. missing: the file has text and the quote
    * is not in it. photo: the material is photos, so a person checks by eye.
@@ -72,6 +75,8 @@ export function settingsOf(q: any) {
     image: coverUrl(Number(q.id), q.image),
     // "#rrggbb", or null for the palette color the id picks.
     color: typeof q.color === 'string' && q.color ? q.color : null,
+    // The bin the maker filed the quiz under, or null for none.
+    bin: q.bin == null ? null : Number(q.bin),
     shuffleQuestions: !!Number(q.shuffleQuestions),
     shuffleOptions: !!Number(q.shuffleOptions),
     timeMode: mode as 'none' | 'question' | 'overall',
@@ -89,6 +94,30 @@ export function settingsOf(q: any) {
   }
 }
 
+const asQuestion =
+  (sources: Awaited<ReturnType<typeof loadSources>>) =>
+  (r: any): Question => ({
+    id: Number(r.id),
+    kind: r.kind,
+    prompt: String(r.prompt),
+    choices: json(r.choices, []),
+    answer: r.answer == null ? null : Number(r.answer),
+    accepted: json(r.accepted, []),
+    rubric: r.rubric ?? null,
+    points: Number(r.points ?? 1),
+    explain: r.explain ?? '',
+    topic: String(r.topic),
+    bloom: r.bloom,
+    page: r.sourcePage == null ? null : Number(r.sourcePage),
+    quote: r.sourceQuote ?? null,
+    check: checkFor(!!Number(r.grounded), sources),
+    file: r.sourceFile ?? null,
+    image: r.image ?? null,
+    imageAlt: r.imageAlt ?? null,
+    imageCredit: json(r.imageCredit, null),
+    itemSet: json(r.itemSet, null),
+  })
+
 /** Everything the builder needs in one answer. */
 export async function fullQuiz(id: number) {
   const [quiz, rows, sources, messages] = await Promise.all([
@@ -97,6 +126,9 @@ export async function fullQuiz(id: number) {
     loadSources(id),
     DB.from('messages').where('messages.quizId', id).orderBy('messages.id').array(),
   ])
+  const questions = rows.map(asQuestion(sources))
+  const inSets = setsOf(questions)
+  for (const q of questions) q.entry = inSets.entries.get(q.id) ?? null
   return {
     quiz: {
       id: Number(quiz.id),
@@ -110,26 +142,8 @@ export async function fullQuiz(id: number) {
       updatedAt: Number(quiz.updatedAt),
       ...settingsOf(quiz),
     },
-    questions: rows.map((r: any): Question => ({
-      id: Number(r.id),
-      kind: r.kind,
-      prompt: String(r.prompt),
-      choices: json(r.choices, []),
-      answer: r.answer == null ? null : Number(r.answer),
-      accepted: json(r.accepted, []),
-      rubric: r.rubric ?? null,
-      points: Number(r.points ?? 1),
-      explain: r.explain ?? '',
-      topic: String(r.topic),
-      bloom: r.bloom,
-      page: r.sourcePage == null ? null : Number(r.sourcePage),
-      quote: r.sourceQuote ?? null,
-      check: checkFor(!!Number(r.grounded), sources),
-      file: r.sourceFile ?? null,
-      image: r.image ?? null,
-      imageAlt: r.imageAlt ?? null,
-      imageCredit: json(r.imageCredit, null),
-    })),
+    questions,
+    sets: inSets.sets,
     sources: sources.map((s) => ({
       id: s.id,
       name: s.name,
@@ -207,7 +221,15 @@ export function clean(q: any, n: number): QuestionDraft {
     page: Number.isInteger(q?.page) ? q.page : null,
     quote: str(q?.quote, 2000) || null,
     ...picture(q),
+    itemSet: kind === 'identify' ? itemSetOf(q?.itemSet) : null,
   }
+}
+
+function itemSetOf(v: any): ItemSet | null {
+  const key = str(v?.key, 40)
+  if (!key || (v.style !== 'bank' && v.style !== 'crossword')) return null
+  const extra: string[] = v.style === 'bank' && Array.isArray(v.extra) ? v.extra.map((w: any) => str(w, 60)).filter(Boolean).slice(0, 12) : []
+  return { key, style: v.style, title: str(v.title, 120), extra }
 }
 
 /** The question's illustration, when it names a stored file; nothing otherwise. */
@@ -273,6 +295,7 @@ export async function saveQuestions(quizId: number, list: Saving[]) {
           image: q.image ?? null,
           imageAlt: q.imageAlt ?? null,
           imageCredit: q.imageCredit ? JSON.stringify(q.imageCredit) : null,
+          itemSet: q.kind === 'identify' && q.itemSet ? JSON.stringify(q.itemSet) : null,
       }
       if (keep != null) await DB.Update.table('questions').set(values).where('questions.id', keep).run()
       else await DB.Insert.into('questions').values(values).run()

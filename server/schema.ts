@@ -6,7 +6,6 @@ export const users = table("users", {
   email: Field.Varchar(254),
   passwordHash: Field.Varchar(255, null),
   googleId: Field.Varchar(64, null),
-  // When the bell was last opened: what came after it is unread.
   noticesSeenAt: Field.Int(null),
   createdAt: Field.Date.now(),
 })
@@ -22,9 +21,6 @@ export const sessions = table("sessions", {
 })
 export const sessionsToken = Field.Unique(sessions.token)
 
-// A sign-in code emailed to an address: six digits, kept only as a hash,
-// good for ten minutes and five tries. Rows stay for a day after they are
-// sent, so the hourly limit per address can count them.
 export const codes = table("codes", {
   id: Field.Primary(),
   email: Field.Varchar(254),
@@ -36,6 +32,13 @@ export const codes = table("codes", {
   usedAt: Field.Int(null),
 })
 export const codesEmail = Field.Index(codes.email, codes.sentAt)
+
+export const bins = table("bins", {
+  id: Field.Primary(),
+  name: Field.Varchar(80),
+  owner: Field.Foreign(users.id, { onDelete: "CASCADE" }),
+  ...Field.Timestamps(),
+})
 
 export const quizzes = table("quizzes", {
   id: Field.Primary(),
@@ -51,48 +54,26 @@ export const quizzes = table("quizzes", {
   sourcePages: Field.Int(null),
   insight: Field.Text(true),
   insightAt: Field.Int(null),
-  // Its Settings page. `icon` is an Iconify id ("fluent-emoji-flat:test-tube");
-  // `image` an uploaded cover under data/uploads, shown instead of the icon.
   description: Field.Text(true),
   icon: Field.Varchar(80, null),
   image: Field.Varchar(500, null),
-  // The quiz's color ("#2f6fdb", lowercase): its card, its square in the
-  // sidebar and the accent of its page for respondents. Null takes the color
-  // the id picks from the palette (web/src/composables/color.ts).
   color: Field.Varchar(7, null),
   shuffleQuestions: Field.Bool(false),
   shuffleOptions: Field.Bool(false),
-  // No limit, seconds for each question, or seconds for the whole quiz.
   timeMode: Field.Enum(["none", "question", "overall"] as const, "none"),
   timeLimit: Field.Int(null),
-  // A second attempt from the same browser (remembered in its localStorage).
   allowRetake: Field.Bool(true),
-  // Off: respondents see neither score nor answers until the maker releases
-  // them (`resultsReleasedAt`); those who asked are emailed then.
   showResults: Field.Bool(true),
   resultsReleasedAt: Field.Int(null),
-  // Off: identification is exact after normalizing, and essays wait for the
-  // maker's score instead of the AI's.
   aiCheck: Field.Bool(true),
+  bin: Field.Foreign(bins.id, { nullable: true, onDelete: "SET NULL" }),
   aiEssay: Field.Bool(true),
-  // Off: no "Show hint" on the questions (a graded quiz, Kyle's choice of
-  // 2026-10-02: Practice shows answers and hints and allows retakes; Graded holds
-  // results, hides hints and allows one attempt per browser).
   showHints: Field.Bool(true),
-  // When an answer is checked and shown (Kyle, 2026-10-02): "each" after the
-  // respondent confirms it, locked from then on; "end" when the quiz is
-  // finished, changeable until then. Practice is each; Test and Graded are
-  // end (Graded also holds the results).
   feedback: Field.Enum(["each", "end"] as const, "each"),
   ...Field.Timestamps(),
 })
 export const quizzesShareCode = Field.Unique(quizzes.shareCode)
 
-// A file of material, read once when it is uploaded: `text` holds its pages
-// (a JSON array), from a PDF's text layer or, for photos and scanned pages,
-// the AI's transcription (`method`). Every later step reads that text, never
-// the file. A file waits in the prompt box with no quiz (`quizId` null) and
-// joins one when the prompt is sent.
 export const sources = table("sources", {
   id: Field.Primary(),
   quizId: Field.Foreign(quizzes.id, { nullable: true, onDelete: "CASCADE" }),
@@ -141,16 +122,12 @@ export const questions = table("questions", {
   ] as const),
   sourcePage: Field.Int(null),
   sourceQuote: Field.Text(true),
-  // The file the quote was found in, when the material is more than one.
   sourceFile: Field.Varchar(255, null),
   grounded: Field.Bool(false),
-  // An illustration shown above the prompt: a file under data/illustrations
-  // (uploaded, cropped from the module, or copied from Wikimedia Commons),
-  // its alt text, and its credit ({ from, text, url }). A Commons picture
-  // names its author and license, as its license asks.
   image: Field.Varchar(64, null),
   imageAlt: Field.Varchar(300, null),
   imageCredit: Field.Json(true),
+  itemSet: Field.Json(true),
 })
 export const questionsOrder = Field.Index(questions.quizId, questions.position)
 
@@ -165,28 +142,12 @@ export const responses = table("responses", {
   rating: Field.Int(null),
   createdAt: Field.Date.now(),
   finishedAt: Field.Int(null),
-  // Set when the quiz stops being shared while this attempt is open, so an
-  // overall time limit stops counting; sharing again moves `createdAt`
-  // forward by the paused span and clears it. `createdAt` is therefore the
-  // start of the attempt less any time it spent paused, not the clock time
-  // the respondent began.
   pausedAt: Field.Int(null),
-  // The section the respondent typed under the name, if any ("7 Sampaguita").
   section: Field.Varchar(80, null),
-  // The AI's study note for this respondent, written once on request after
-  // the quiz is finished and its results are shown: what was missed and
-  // where in the material to look (JSON, see routes/public.ts). The name is
-  // never part of what the AI is sent.
   advice: Field.Text(true),
   adviceAt: Field.Int(null),
-  // Left by a respondent when results are held back, to be told on release.
   notifyEmail: Field.Varchar(254, null),
   notifiedAt: Field.Int(null),
-  // The paper this respondent was served, saved when the attempt starts so a
-  // shuffled quiz is reviewed as it was laid out: question ids in order, and
-  // for each question the original option indices in the order shown, with
-  // the key as the letter shown ({ questions: [12, 9, ...], options: { "12":
-  // [2, 0, 3, 1] }, key: { "12": "B" } }). Null for a quiz that shuffles nothing.
   layout: Field.Json(true),
 })
 
@@ -201,16 +162,10 @@ export const answers = table("answers", {
   verdict: Field.Text(true),
   byAi: Field.Bool(false),
   overridden: Field.Bool(false),
-  // An essay waiting for the maker's score (essay checking by AI is off).
   pending: Field.Bool(false),
 })
 export const answersOnce = Field.Unique(answers.responseId, answers.questionId)
 
-// A respondent's report on a shared quiz, from the flag on its pages: why,
-// and a note. Anonymous (no attempt, no name), and shown to the quiz maker.
-// `questionId` is the question on screen when the flag was pressed, a plain
-// integer rather than a foreign key: the question can be edited or deleted
-// later, and the report stays.
 export const reports = table("reports", {
   id: Field.Primary(),
   quizId: Field.Foreign(quizzes.id, { onDelete: "CASCADE" }),

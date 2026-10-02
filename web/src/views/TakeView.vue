@@ -34,6 +34,7 @@ import {
   type Attempt,
   type Draft,
   type Given,
+  type GridEntry,
   type Held,
   type PublicQuiz,
 } from "../composables/take"
@@ -439,6 +440,31 @@ function setDraft(d: Draft) {
   drafts.value[q.id] = d
   answerError.value = ""
 }
+
+// ---- sets: a word bank's used words, a crossword's letters so far ---------------------
+const setOfCurrent = computed(() => {
+  const key = current.value?.set
+  return key ? quiz.value?.sets?.find((x) => x.key === key) : undefined
+})
+/** What is written for a question right now: the pick not sent yet, else the saved answer. */
+const textOf = (id: number) =>
+  drafts.value[id]?.text ?? byQ.value[id]?.text ?? undefined
+const gridOfCurrent = computed<GridEntry[] | undefined>(() => {
+  const q = current.value
+  if (!q?.entry || !q.set) return undefined
+  return questions.value
+    .filter((x) => x.set === q.set && x.entry)
+    .map((x) => ({ ...x.entry!, text: textOf(x.id), active: x.id === q.id }))
+})
+const usedInSet = computed(() => {
+  const q = current.value
+  if (!q?.set) return []
+  return questions.value
+    .filter((x) => x.set === q.set && x.id !== q.id)
+    .map((x) => textOf(x.id) ?? "")
+    .filter(Boolean)
+})
+
 const filled = (d: Draft | undefined) =>
   !!d && (d.choice != null || !!d.text?.trim())
 const given = computed(() =>
@@ -1121,6 +1147,9 @@ function openReview() {
               :show-hints="showHints"
               :ai-check="aiCheck"
               :ai-essay="aiEssay"
+              :set="setOfCurrent"
+              :grid="gridOfCurrent"
+              :used="usedInSet"
               @pick="setDraft"
               @confirm="primary"
             />

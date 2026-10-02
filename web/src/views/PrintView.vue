@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import { useRoute } from "vue-router"
+import CrosswordGrid from "../components/CrosswordGrid.vue"
 import Icon from "../components/Icon.vue"
 import { useFetch } from "../composables/fetch"
 import {
@@ -147,6 +148,47 @@ type Section = { kind: Kind; items: Item[] }
 const ORDER: Kind[] = ["choice", "truefalse", "identify", "essay"]
 const LETTERS = "ABCDEFGH"
 const ROMAN = ["I", "II", "III", "IV"]
+
+/*
+ * Sets inside the identification part: the word bank prints as a box of its
+ * words above the items, the crossword as its empty grid, and each crossword
+ * item names its place ("4 Across") where the others have a blank.
+ */
+const bank = computed(() => data.value?.sets?.find((x) => x.style === "bank"))
+const cross = computed(() =>
+  data.value?.sets?.find((x) => x.style === "crossword"),
+)
+const crossEntries = computed(() =>
+  (data.value?.questions ?? []).flatMap((q) => (q.entry ? [q.entry] : [])),
+)
+const place = (q: Question) =>
+  q.entry
+    ? `${q.entry.number} ${
+        q.entry.dir === "across"
+          ? fil.value
+            ? "Pahalang"
+            : "Across"
+          : fil.value
+            ? "Pababa"
+            : "Down"
+      }`
+    : ""
+const setNote = computed(() => {
+  const notes: string[] = []
+  if (bank.value)
+    notes.push(
+      fil.value
+        ? "Para sa mga tanong na walang puwesto sa krosword, pumili ng sagot mula sa kahon ng mga salita."
+        : "For an item with a blank, choose the answer from the word bank.",
+    )
+  if (cross.value)
+    notes.push(
+      fil.value
+        ? "Isulat sa krosword ang sagot ng bawat tanong na may bilang at direksyon."
+        : "For an item with a number and a direction, write the answer in the crossword.",
+    )
+  return notes.join(" ")
+})
 
 function random(seed: number) {
   return () => {
@@ -438,15 +480,37 @@ const print = () => window.print()
 
         <section v-for="(sec, k) in s.sections" :key="sec.kind" class="test">
           <h3>{{ W.test }} {{ ROMAN[k] }}. {{ title(sec.kind) }}</h3>
-          <p class="dir">{{ directions(sec.kind, sec.items) }}</p>
+          <p class="dir">
+            {{ directions(sec.kind, sec.items) }}
+            <template v-if="sec.kind === 'identify'">{{ setNote }}</template>
+          </p>
+          <template v-if="sec.kind === 'identify'">
+            <div v-if="bank" class="wordbank">
+              <b>{{ bank.title || "Word bank" }}</b>
+              <ul>
+                <li v-for="w in bank.words" :key="w">{{ w }}</li>
+              </ul>
+            </div>
+            <div v-if="cross && crossEntries.length" class="crossword">
+              <CrosswordGrid
+                :rows="cross.rows"
+                :cols="cross.cols"
+                :entries="crossEntries"
+                print
+              />
+            </div>
+          </template>
           <ol class="items">
             <li v-for="it in sec.items" :key="it.q.id ?? it.n" class="item">
               <p class="stem">
                 <span
-                  v-if="sec.kind !== 'essay'"
+                  v-if="sec.kind !== 'essay' && !it.q.entry"
                   class="blank"
                   :data-kind="sec.kind"
                 />
+                <span v-else-if="it.q.entry" class="place">{{
+                  place(it.q)
+                }}</span>
                 <b>{{ it.n }}.</b>
                 <span>
                   {{ it.q.prompt }}
@@ -726,6 +790,34 @@ const print = () => window.print()
 .dir {
   margin: 2px 0 6px;
   font-style: italic;
+}
+.wordbank {
+  display: grid;
+  gap: 4px;
+  margin: 4px 0 10px;
+  padding: 6px 10px 8px;
+  border: 0.75pt solid #000;
+  break-inside: avoid;
+
+  ul {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 22px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+}
+.crossword {
+  margin: 4px 0 10px;
+  break-inside: avoid;
+}
+.place {
+  flex: none;
+  width: 1.75in;
+  font-size: 9.5pt;
+  font-weight: 600;
+  white-space: nowrap;
 }
 .items {
   display: flex;

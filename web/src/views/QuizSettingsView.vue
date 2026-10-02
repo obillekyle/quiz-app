@@ -85,8 +85,10 @@ function save(key: string, body: Record<string, unknown>) {
       )
       data.value = reply
       flash(key)
-      // The home cards and the sidebar show the name, the icon and the color.
-      if ("title" in body || "icon" in body || "color" in body) refreshQuizzes()
+      // The home cards and the sidebar show the name, the icon and the color,
+      // and the home page filters its list by the bin.
+      if ("title" in body || "icon" in body || "color" in body || "bin" in body)
+        refreshQuizzes()
       return reply
     } catch (e) {
       failure[key] = message(e)
@@ -298,6 +300,22 @@ const previewCustom = (e: Event) =>
   (picking.value = (e.target as HTMLInputElement).value)
 const pickCustom = (e: Event) =>
   setColor((e.target as HTMLInputElement).value.toLowerCase())
+
+// ---- the bin ----------------------------------------------------------------------
+const bins = useFetch<{ id: number; name: string; count: number }[]>("/bins")
+/** The bin as it stands on screen: the pick on its way, else the quiz's own. */
+const binNow = computed(() =>
+  "bin" in local ? (local.bin ?? null) : (quiz.value?.bin ?? null),
+)
+
+async function setBin(e: Event) {
+  const value = (e.target as HTMLSelectElement).value
+  const to = value === "" ? null : Number(value)
+  if (to === (quiz.value?.bin ?? null)) return
+  local.bin = to
+  await save("bin", { bin: to })
+  delete local.bin
+}
 
 // ---- the time limit ---------------------------------------------------------------
 type Mode = "none" | "question" | "overall"
@@ -721,6 +739,43 @@ const SWITCHES: Record<SwitchKey, { title: string; text: string }> = {
               </div>
               <p v-if="failure.color" class="error" role="alert">
                 {{ failure.color }}
+              </p>
+            </div>
+
+            <div class="tile">
+              <div class="tile-head">
+                <label for="q-bin">Bin</label>
+                <span v-if="saved === 'bin'" class="saved" aria-hidden="true"
+                  ><Icon name="check" :size="16" /> Saved</span
+                >
+              </div>
+              <!-- Each option carries `selected` itself: the bins arrive after
+                   the quiz, and a value set on the select before its options
+                   exist would leave it on None. -->
+              <select
+                id="q-bin"
+                field
+                class="bin"
+                aria-describedby="bin-text"
+                :aria-invalid="!!failure.bin || undefined"
+                @change="setBin"
+              >
+                <option value="" :selected="binNow === null">None</option>
+                <option
+                  v-for="b in bins.data.value ?? []"
+                  :key="b.id"
+                  :value="b.id"
+                  :selected="binNow === b.id"
+                >
+                  {{ b.name }}
+                </option>
+              </select>
+              <p v-if="failure.bin" class="error" role="alert">
+                {{ failure.bin }}
+              </p>
+              <p id="bin-text" class="hint">
+                Files the quiz under a bin. Bins are made on the home page,
+                above the list of quizzes.
               </p>
             </div>
 
@@ -1223,6 +1278,14 @@ textarea[field] {
   margin-left: 8px;
   padding: 0 14px;
   font-size: 14px;
+}
+
+/* ---- the bin: a select the width of a bin's name, not of the tile ---- */
+select.bin {
+  max-width: 320px;
+  /* Room for the arrow, which the field's own padding would write over. */
+  padding-right: 34px;
+  cursor: pointer;
 }
 
 /* ---- the time limit: a Material segmented button ---- */

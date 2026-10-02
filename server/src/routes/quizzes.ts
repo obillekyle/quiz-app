@@ -210,7 +210,7 @@ quizzes.post('/:id/chat', async (c) => {
       before,
       data.ops ?? [],
       (q) => q,
-      (old, q) => ({ ...q, id: old.id, image: old.image ?? null, imageAlt: old.imageAlt ?? null, imageCredit: old.imageCredit ?? null }),
+      (old, q) => ({ ...q, id: old.id, image: old.image ?? null, imageAlt: old.imageAlt ?? null, imageCredit: old.imageCredit ?? null, itemSet: q.kind === 'identify' ? (old.itemSet ?? null) : null }),
     ).map((q, i) => ({ ...clean(q, i + 1), id: q.id ?? null }))
     await saveQuestions(id, after)
     if (data.title) await DB.Update.table('quizzes').set({ title: data.title.slice(0, 160) }).where('quizzes.id', id).run()
@@ -313,6 +313,15 @@ quizzes.patch('/:id', async (c) => {
     if (color === null || color === '') set.color = null
     else if (typeof color === 'string' && COLOR.test(color)) set.color = color.toLowerCase()
     else throw bad('Use a color in the form #rrggbb, such as #2f6fdb.')
+  }
+  if ('bin' in body) {
+    // Only a bin of the same account: another account's id answers as no bin at all.
+    const mine =
+      Number.isInteger(body.bin) &&
+      (await DB.from('bins').where('bins.id', body.bin).and('bins.owner', c.get('user').id).exists())
+    if (body.bin === null) set.bin = null
+    else if (mine) set.bin = body.bin
+    else throw bad('Choose one of your bins, or none.')
   }
   for (const k of SWITCHES)
     if (k in body) {
@@ -617,6 +626,7 @@ quizzes.post('/:id/duplicate', async (c) => {
       description: s.description,
       icon: s.icon,
       color: s.color,
+      bin: s.bin,
       shuffleQuestions: s.shuffleQuestions,
       shuffleOptions: s.shuffleOptions,
       timeMode: s.timeMode,

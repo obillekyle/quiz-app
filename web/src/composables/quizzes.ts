@@ -12,6 +12,8 @@ export type QuizSettings = {
   image: string | null
   /** "#rrggbb"; null takes the palette color the id picks. */
   color: string | null
+  /** The id of the bin the quiz is filed under; null for none. */
+  bin: number | null
   shuffleQuestions: boolean
   shuffleOptions: boolean
   timeMode: "none" | "question" | "overall"
@@ -141,7 +143,27 @@ export type Question = {
     text: string
     url: string | null
   } | null
+  /** identify: the set this question is answered in, shared by every question with the same key. */
+  itemSet?: ItemSet | null
+  /** A crossword word's place in the grid, as the server laid it out at the last save. */
+  entry?: {
+    number: number
+    row: number
+    col: number
+    dir: "across" | "down"
+    length: number
+  } | null
 }
+
+/** A set of identification questions: picked from a word bank, or written into a crossword. */
+export type ItemSet = {
+  key: string
+  style: "bank" | "crossword"
+  title: string
+  /** Word bank: words that are nobody's answer. */
+  extra: string[]
+}
+export type AnswerStyle = "typed" | ItemSet["style"]
 
 export type Message = {
   id: number
@@ -184,6 +206,15 @@ export type FullQuiz = {
     updatedAt: number
   } & QuizSettings
   questions: Question[]
+  /** The quiz's sets as a respondent is shown them: a bank's words, a crossword's size. */
+  sets?: {
+    key: string
+    style: ItemSet["style"]
+    title: string
+    words: string[]
+    rows: number
+    cols: number
+  }[]
   sources: Source[]
   messages: Message[]
 }

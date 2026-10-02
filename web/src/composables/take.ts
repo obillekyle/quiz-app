@@ -26,7 +26,30 @@ export type PublicQuestion = {
   image?: string | null
   imageAlt?: string | null
   imageCredit?: Credit | null
+  /** The key of the set this question is answered in, when it is in one. */
+  set?: string | null
+  /** A crossword member's place in the grid. */
+  entry?: Placed | null
 }
+
+export type Placed = {
+  number: number
+  row: number
+  col: number
+  dir: "across" | "down"
+  length: number
+}
+/** A set of identification questions: a word bank's words, or a crossword's size. */
+export type ShownSet = {
+  key: string
+  style: "bank" | "crossword"
+  title: string
+  words: string[]
+  rows: number
+  cols: number
+}
+/** A crossword entry as the grid draws it: its place, and what is written in it so far. */
+export type GridEntry = Placed & { text?: string; active?: boolean }
 
 export type TimeMode = "none" | "question" | "overall"
 
@@ -61,6 +84,7 @@ export type PublicQuiz = {
     feedback: "each" | "end"
   }
   questions: PublicQuestion[]
+  sets?: ShownSet[]
 }
 
 /** What comes back once a question is answered, or, after finishing, skipped. */

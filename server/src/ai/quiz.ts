@@ -35,7 +35,12 @@ export type QuestionDraft = {
   image?: string | null
   imageAlt?: string | null
   imageCredit?: { from: 'upload' | 'module' | 'wikimedia'; text: string; url: string | null } | null
+  /** identify: the set this question is answered in, shared by every question with the same key. */
+  itemSet?: ItemSet | null
 }
+
+/** A set of identification questions: picked from a word bank, or written into a crossword. `extra` holds bank words that are nobody's answer. */
+export type ItemSet = { key: string; style: 'bank' | 'crossword'; title: string; extra: string[] }
 
 const QUESTION = S.obj(
   {

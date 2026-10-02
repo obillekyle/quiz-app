@@ -13,6 +13,7 @@ import {
   KINDS,
   refreshQuizzes,
   useQuizzes,
+  type AnswerStyle,
   type FullQuiz,
   type Kind,
   type Question,
@@ -386,6 +387,33 @@ function add(kind: Kind) {
       ?.focus(),
   )
 }
+/**
+ * A quiz has one word bank and one crossword. A question joining a set takes
+ * the set as its other members have it, so the title and the bank's extra
+ * words stay the same on every member.
+ */
+function setAnswered(i: number, style: AnswerStyle) {
+  const q = questions.value[i]
+  if (!q) return
+  if (style === "typed") {
+    q.itemSet = null
+    return
+  }
+  const like = questions.value.find((x) => x.itemSet?.style === style)?.itemSet
+  q.itemSet = like
+    ? { ...like, extra: [...like.extra] }
+    : {
+        key: style,
+        style,
+        title: style === "bank" ? "Word bank" : "Crossword",
+        extra: [],
+      }
+}
+function setExtra(words: string[]) {
+  for (const q of questions.value)
+    if (q.itemSet?.style === "bank") q.itemSet.extra = [...words]
+}
+
 function move(i: number, by: number) {
   const list = questions.value
   const [q] = list.splice(i, 1)
@@ -780,6 +808,8 @@ const answeredBy = computed(
                 :data-changed="changed.has(q._key) || undefined"
                 :data-new="added.has(q._key) || undefined"
                 @remove="questions.splice(i, 1)"
+                @answered="setAnswered(i, $event)"
+                @extra="setExtra"
                 @up="move(i, -1)"
                 @down="move(i, 1)"
               />

@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue"
+import CrosswordGrid from "./CrosswordGrid.vue"
 import Icon from "./Icon.vue"
 import { KIND_LABEL } from "../composables/quizzes"
 import type {
   Draft,
   Feedback,
   Given,
+  GridEntry,
   PublicQuestion,
+  ShownSet,
 } from "../composables/take"
 
 /**
@@ -42,6 +45,12 @@ const props = withDefaults(
     showHints?: boolean
     aiCheck?: boolean
     aiEssay?: boolean
+    /** The set this question is answered in: a word bank, or a crossword. */
+    set?: ShownSet
+    /** Crossword: every entry of the grid with what is written in it, this question's marked active. */
+    grid?: GridEntry[]
+    /** Word bank: the words already given to the set's other questions. */
+    used?: string[]
   }>(),
   { showHints: true, aiCheck: true, aiEssay: true },
 )
@@ -99,6 +108,13 @@ function state(i: number) {
 function choose(i: number) {
   if (open.value && !props.busy) emit("pick", { choice: i })
 }
+/** A word from the bank is the answer as text, so it is saved and checked like a typed one. */
+function word(w: string) {
+  if (open.value && !props.busy) emit("pick", { text: w })
+}
+const same = (a: string | undefined, b: string) =>
+  (a ?? "").trim().toLowerCase() === b.trim().toLowerCase()
+const isUsed = (w: string) => !!props.used?.some((u) => same(u, w))
 const typed = (e: Event) =>
   emit("pick", {
     text: (e.target as HTMLInputElement | HTMLTextAreaElement).value,
@@ -276,8 +292,45 @@ watch(
 
     <!-- Identification and essay: typed here, sent by the page's button. -->
     <div v-else class="typed">
-      <form v-if="open" class="write" @submit.prevent="emit('confirm')">
+      <!-- A crossword: the whole grid with this question's squares marked,
+           filling in as the set's other questions are answered. -->
+      <figure v-if="set?.style === 'crossword' && grid" class="cross">
+        <figcaption>{{ set.title || "Crossword" }}</figcaption>
+        <CrosswordGrid :rows="set.rows" :cols="set.cols" :entries="grid" />
+      </figure>
+
+      <!-- A word bank: the answer is one of its words, picked instead of typed. -->
+      <div v-if="open && set?.style === 'bank'" class="bank">
+        <p :id="`bank-${q.id}`" class="bank-title">
+          {{ set.title || "Word bank" }}
+        </p>
+        <ul role="radiogroup" :aria-labelledby="`bank-${q.id}`">
+          <li v-for="w in set.words" :key="w">
+            <button
+              type="button"
+              role="radio"
+              :aria-checked="same(sel.text, w)"
+              :data-used="isUsed(w) || undefined"
+              :disabled="busy"
+              @click="word(w)"
+            >
+              {{ w }}
+            </button>
+          </li>
+        </ul>
+        <p class="note">
+          Choose the word that fits. A crossed-out word is already used on
+          another question, and can still be chosen.
+        </p>
+      </div>
+
+      <form v-else-if="open" class="write" @submit.prevent="emit('confirm')">
         <label :for="`answer-${q.id}`" class="sr-only">Your answer</label>
+        <p v-if="q.entry" class="clue">
+          {{ q.entry.number }}
+          {{ q.entry.dir === "across" ? "Across" : "Down" }},
+          {{ q.entry.length }} letters
+        </p>
         <input
           v-if="q.kind === 'identify'"
           :id="`answer-${q.id}`"
@@ -301,7 +354,11 @@ watch(
           @input="typed"
         />
         <p class="note">
-          <template v-if="q.kind === 'identify' && aiCheck">
+          <template v-if="q.entry">
+            Capital letters and spaces do not count. Every letter has to match
+            the answer.
+          </template>
+          <template v-else-if="q.kind === 'identify' && aiCheck">
             Capital letters, spacing and numbers written as words do not count
             against you. A close answer goes to the AI to check.
           </template>
@@ -561,6 +618,85 @@ watch(
   .body > span {
     color: var(--bad);
   }
+}
+
+.bank {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+
+  .bank-title {
+    margin: 0;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--muted);
+  }
+  ul {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  button {
+    min-height: 44px;
+    padding: 0 16px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-full);
+    background: var(--surface);
+    color: inherit;
+    font: inherit;
+    font-weight: 500;
+    cursor: pointer;
+    transition:
+      background 0.15s,
+      border-color 0.15s,
+      transform 0.1s;
+
+    &:hover {
+      border-color: var(--accent, var(--good));
+    }
+    &:active {
+      transform: scale(0.97);
+    }
+    &[data-used] {
+      color: var(--muted);
+      text-decoration: line-through;
+    }
+    &[aria-checked="true"] {
+      border-color: var(--accent, var(--good));
+      background: color-mix(
+        in srgb,
+        var(--accent, var(--good)) 14%,
+        var(--surface)
+      );
+      color: inherit;
+      text-decoration: none;
+      font-weight: 600;
+    }
+  }
+}
+.cross {
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+  margin: 0 0 12px;
+
+  figcaption {
+    justify-self: start;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--muted);
+  }
+}
+.clue {
+  margin: 0 0 6px;
+  font-size: 0.875rem;
+  font-weight: 600;
 }
 
 .typed {

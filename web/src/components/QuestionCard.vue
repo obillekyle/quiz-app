@@ -6,6 +6,7 @@ import {
   BLOOM,
   KINDS,
   KIND_LABEL,
+  type AnswerStyle,
   type Kind,
   type Question,
 } from "../composables/quizzes"
@@ -17,7 +18,21 @@ const props = defineProps<{
   language: "en" | "fil"
   quizId: number
 }>()
-defineEmits<{ remove: []; up: []; down: [] }>()
+defineEmits<{
+  remove: []
+  up: []
+  down: []
+  /** How this identification question is answered: typed, from the word bank, or in the crossword. */
+  answered: [style: AnswerStyle]
+  /** The word bank's extra words, which every question in the bank shares. */
+  extra: [words: string[]]
+}>()
+
+const words = (text: string) =>
+  text
+    .split(",")
+    .map((w) => w.trim())
+    .filter(Boolean)
 
 const LETTERS = "ABCDEF"
 
@@ -475,9 +490,47 @@ function addAccepted() {
           />
         </li>
       </ul>
-      <p class="aside">
+      <p v-if="!q.itemSet" class="aside">
         The AI checks typed answers, so capitalization, small spelling slips and
         numbers written as words still count.
+      </p>
+
+      <label class="answered">
+        <span class="label">Answered</span>
+        <select
+          :value="q.itemSet?.style ?? 'typed'"
+          @change="
+            $emit(
+              'answered',
+              ($event.target as HTMLSelectElement).value as AnswerStyle,
+            )
+          "
+        >
+          <option value="typed">Typed</option>
+          <option value="bank">From the word bank</option>
+          <option value="crossword">In the crossword</option>
+        </select>
+      </label>
+      <template v-if="q.itemSet?.style === 'bank'">
+        <label class="answered">
+          <span class="label">Extra words in the bank</span>
+          <input
+            :value="q.itemSet.extra.join(', ')"
+            placeholder="Words that fit no question, separated by commas"
+            @change="
+              $emit('extra', words(($event.target as HTMLInputElement).value))
+            "
+          />
+        </label>
+        <p class="aside">
+          The bank holds the first accepted answer of every question in it, plus
+          the extra words, in alphabetical order. A pick is checked against the
+          key, with no AI.
+        </p>
+      </template>
+      <p v-else-if="q.itemSet?.style === 'crossword'" class="aside">
+        The first accepted answer goes in the grid and this question is its
+        clue. A word that crosses no other word is asked as a typed question.
       </p>
     </div>
 
@@ -1052,6 +1105,28 @@ input {
     border-radius: var(--radius-full);
     outline: none;
     font-size: 14px;
+  }
+}
+
+.answered {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin: 10px 0 0;
+
+  input {
+    min-height: 36px;
+    padding: 0 10px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    color: inherit;
+    font: inherit;
+    font-size: 14px;
+  }
+  input {
+    flex: 1 1 240px;
   }
 }
 
