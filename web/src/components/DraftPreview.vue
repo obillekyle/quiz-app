@@ -1,13 +1,6 @@
 <script setup lang="ts">
 import { onBeforeUnmount, ref } from "vue"
 
-/**
- * The questions pane while the AI drafts: four cards in the shape of what is
- * coming, each filled in piece by piece (its header row, its prompt, four
- * options), a card every 1.5 s, round again once all four are drawn. The
- * status line above is the phase the server is in, on a timer tuned to the
- * measured draft; the cards count nothing.
- */
 defineProps<{
   /** The phase the AI is in: reading, writing, checking. */
   status: string
@@ -19,8 +12,6 @@ const PIECES = 6
 const STEP = 250
 /** All four drawn, a short hold, then from the top. */
 const CYCLE = CARDS * PIECES + 2
-// With reduced motion asked for, the four cards stand whole and nothing
-// loops: the status line alone says the work is going on.
 const still = matchMedia("(prefers-reduced-motion: reduce)").matches
 const tick = ref(still ? CYCLE : 0)
 const timer = still
@@ -109,8 +100,6 @@ const on = (card: number, piece: number) => tick.value >= card * PIECES + piece
 .opt {
   height: 40px;
 }
-/* A piece is drawn when its turn comes: it rises 6px into place, 200 ms,
-   and all of a card's pieces go out together when the loop starts over. */
 .row,
 .prompt,
 .opt {

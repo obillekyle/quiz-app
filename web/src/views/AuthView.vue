@@ -6,15 +6,6 @@ import LogoMark from "../components/LogoMark.vue"
 import { useAuth } from "../composables/auth"
 import { useAction } from "../composables/fetch"
 
-/*
- * Signing in, as in the QuizApp design (Figma, `123140.png` and
- * `123251.png`): the mark centered on the whole screen, and a sheet over it
- * with the way in. Google, or an email address and a six-digit code sent to
- * it; a new address gets an account and one more page asking for a name. A
- * password still works for an account that has one.
- *
- * On a computer the mark has the left half and the steps the right.
- */
 const props = defineProps<{ mode: "login" | "register" }>()
 
 const route = useRoute()
@@ -32,8 +23,6 @@ const via = ref<"mail" | "log">("mail")
 /** Where to go once signed in: the page that sent here, if it is one of ours. */
 const next = computed(() => {
   const n = route.query.next
-  // One slash, then only a path's own characters: "/\\evil.com" reads as
-  // "//evil.com" to a browser.
   return typeof n === "string" && /^\/(?![/\\])[\w\-./?=&%~+:@,;]*$/.test(n)
     ? n
     : "/app"
@@ -176,13 +165,6 @@ const GOOGLE_ERRORS: Record<string, string> = {
   "google-unverified":
     "Your Google account’s email is not verified. Verify it with Google, or use your email.",
 }
-/*
- * On a phone the mark and its name stay centered on the screen while the
- * sheet leaves room for them, and move to the middle of the space above the
- * sheet when a step's sheet would reach them (the code step, a short
- * screen). Measured, since a sheet's height depends on its step and its
- * text; the move is animated in CSS (--brand-y).
- */
 const pageEl = ref<HTMLElement>()
 const brandEl = ref<HTMLElement>()
 const sheetEl = ref<HTMLElement>()
@@ -840,12 +822,6 @@ label {
   white-space: nowrap;
 }
 
-/*
-   * A phone, as in the design: the mark and its name centered on the whole
-   * screen (the page is one grid cell, the brand and the sheet both in it),
-   * the screen dimmed behind a sheet that rises from the bottom. A new
-   * account's name step is the whole page.
-   */
 @media (max-width: 767px) {
   .auth-page {
     position: relative;

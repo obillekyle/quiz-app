@@ -6,14 +6,8 @@ const options = [
   { letter: "D", text: "Bromine" },
 ]
 
-// The demo quiz, shared, so a visitor can answer it with no account. It is
-// the quiz both screenshots below were taken from.
 const sample = "/q/8FSqvXwx"
 
-// The two claims the card above cannot show, each with a screenshot of the
-// real screen. The pictures live in public/landing/: the results from the
-// stats row through the three most missed questions, captured at 2x; the
-// printed page cut out of its preview at its own width.
 const claimRows = [
   {
     title: "It prints as an exam.",
@@ -100,8 +94,6 @@ const claimRows = [
   </section>
 
   <section class="claims">
-    <!-- The first claim is shown by the card above, so it is the section's
-         intro rather than a row with a picture. -->
     <div class="claim-intro">
       <h2>Every question shows its source.</h2>
       <p>
@@ -130,8 +122,6 @@ const claimRows = [
 
 <style scoped>
 .hero {
-  /* The lede's 46ch at its largest size, so the note under the buttons can
-     take the same width without wrapping a word or two to a second line. */
   --copy-w: 585px;
   display: flex;
   flex-direction: column;
@@ -274,8 +264,6 @@ blockquote {
   }
 }
 
-/* The card's foot states what happens next rather than offering two buttons
-   that do nothing. */
 .review {
   margin: var(--space-xs) 0 0;
   padding-top: var(--space-md);
@@ -315,8 +303,6 @@ blockquote {
   align-items: center;
 }
 
-/* Every second picture sits on the left, so the page zigzags down. The wide
-   column moves with it: the picture is always the wider of the two. */
 .claim:nth-child(odd) {
   grid-template-columns: 1.4fr 1fr;
 }
@@ -324,8 +310,6 @@ blockquote {
   order: -1;
 }
 
-/* The intro spans the section, centered, with a hairline under it; each row's
-   text has the hairline above. */
 .claim-intro {
   width: min(100%, 52ch);
   margin: 0 auto;
@@ -354,9 +338,6 @@ blockquote {
   }
 }
 
-/* A screenshot in a frame: the hairline the cards use, the big radius, and a
-   shadow in the brand brown so it sits on the cream rather than floating in
-   gray. */
 .claim-shot {
   margin: 0;
   border: 1px solid var(--line);

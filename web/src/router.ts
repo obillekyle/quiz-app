@@ -1,11 +1,7 @@
 import { createRouter, createWebHistory } from "vue-router"
 import { useAuth } from "./composables/auth"
 
-// Each page is its own chunk, loaded the first time it is visited, so a
-// respondent opening a shared quiz does not download the creator's screens.
 export const router = createRouter({
-  // Real paths (/app/quiz/12), not #/app/quiz/12. The Vite dev server already
-  // answers every path with index.html; the deployed server has to do the same.
   history: createWebHistory(),
   routes: [
     {
@@ -36,8 +32,6 @@ export const router = createRouter({
       meta: { guest: true },
     },
     {
-      // The two pages Google's OAuth consent screen links to, and the foot of
-      // the landing. Plain documents, open to everyone, signed in or not.
       path: "/privacy",
       name: "privacy",
       component: () => import("./views/PrivacyView.vue"),
@@ -48,9 +42,6 @@ export const router = createRouter({
       component: () => import("./views/TermsView.vue"),
     },
     {
-      // The creator's app: top bar and sidebar, with the page in the middle.
-      // A page that needs no account (the shared quiz a respondent opens)
-      // goes beside this route rather than among its children.
       path: "/app",
       component: () => import("./layouts/AppLayout.vue"),
       meta: { auth: true },
@@ -67,16 +58,11 @@ export const router = createRouter({
           component: () => import("./views/AllResponsesView.vue"),
         },
         {
-          // A quiz's overview, as in the QuizApp design and Kyle's dashboard
-          // reference: numbers, responses, sharing, options; "Edit quiz" opens
-          // the editor.
           path: "quiz/:id",
           name: "overview",
           component: () => import("./views/OverviewView.vue"),
         },
         {
-          // A quiz's own pages, from its sidebar (Kyle, 22:58): everyone who
-          // answered, the link and QR code, and what can be done to the quiz.
           path: "quiz/:id/responses",
           name: "quiz-responses",
           component: () => import("./views/QuizResponsesView.vue"),
@@ -112,25 +98,18 @@ export const router = createRouter({
       ],
     },
     {
-      // The editor: full screen, its own top bar (back, title, Save). Its AI
-      // panel (Kyle's sketch of the onboarding) opens from the home prompt box
-      // (?ai=1) or the editor's own "Edit with AI".
       path: "/app/quiz/:id/edit",
       name: "edit",
       component: () => import("./views/BuilderView.vue"),
       meta: { auth: true },
     },
     {
-      // A quiz as a paper test, in black and white: Set A and B, the answer
-      // key, the table of specifications. Full screen, its own controls.
       path: "/app/quiz/:id/print",
       name: "print",
       component: () => import("./views/PrintView.vue"),
       meta: { auth: true },
     },
     {
-      // A shared quiz, answered with a name and no account. Open to everyone,
-      // signed in or not, so a quiz maker can try their own link.
       path: "/q/:code",
       name: "take",
       component: () => import("./views/TakeView.vue"),
@@ -143,9 +122,6 @@ export const router = createRouter({
   ],
 })
 
-// `auth` pages send a visitor to sign in, and back afterwards (`next`).
-// `guest` pages (the landing, sign-in, create account) send someone already
-// signed in to their quizzes, as cutvid sends a returning visitor to projects.
 router.beforeEach(async (to) => {
   const { ready, isLoggedIn } = useAuth()
   await ready()

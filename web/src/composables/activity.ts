@@ -16,10 +16,6 @@ function create() {
 
 let shared: ReturnType<typeof create> | undefined
 
-/**
- * The home list's sparklines, one request for every card, shared like the
- * quiz list. `refresh()` when coming back to the list reads new responses.
- */
 export function useActivity() {
   shared ??= effectScope(true).run(create)!
   return shared

@@ -8,11 +8,6 @@ import { useAction } from "../composables/fetch"
 import { refreshQuizzes } from "../composables/quizzes"
 import { toast } from "../composables/toast"
 
-/**
- * What can be done to a quiz, as a short list at the top of its overview's
- * panel (Kyle, 23:10): Edit quiz first and in the accent, then print,
- * duplicate, archive, and delete in red.
- */
 const props = defineProps<{
   quizId: number
   title: string

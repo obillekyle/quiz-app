@@ -1,17 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue"
 
-/**
- * Responses per day as one thin line, like the activity line beside a
- * repository on GitHub: flat on the baseline on quiet days, a peak on a day
- * a class answered. Scaled to its own busiest day, so it shows the shape of
- * the two weeks, not a count; the count is in its label.
- *
- * The line sits in a rounded square (Kyle, 23:55), 40 px with an
- * 8 px corner like the list's color square, so the row reads square, title,
- * meta, then the globe and this square. A square that size holds two weeks
- * legibly (2 px a day), the same window as the overview's chart.
- */
 const props = withDefaults(
   defineProps<{ counts: number[]; width?: number; height?: number }>(),
   { width: 28, height: 22 },
@@ -79,9 +68,6 @@ const label = computed(() => {
     stroke-linejoin: round;
     vector-effect: non-scaling-stroke;
   }
-  /* No responses in the window: nothing is drawn, and the square keeps its
-     room so the cards' other marks stay in line. A flat line in a raised
-     square read as a button with a missing glyph. */
   &[data-quiet] {
     visibility: hidden;
   }

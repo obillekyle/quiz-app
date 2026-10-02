@@ -1,8 +1,4 @@
 <script setup lang="ts">
-/**
- * The top of a quiz's own pages (Respondents, Sharing, Settings): the trail
- * back, the page's name, and the quiz it belongs to with its status.
- */
 defineProps<{
   quizId: number
   quiz: string

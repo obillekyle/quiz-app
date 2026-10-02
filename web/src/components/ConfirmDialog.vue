@@ -1,14 +1,6 @@
 <script setup lang="ts">
 import { ref } from "vue"
 
-/**
- * A confirmation, as in the QuizApp design's "Delete quiz?" dialog, on the
- * browser's own <dialog>: it traps focus, Escape cancels, and the page behind
- * it is inert.
- *
- *   const confirm = ref<InstanceType<typeof ConfirmDialog>>()
- *   if (await confirm.value!.ask({ title: 'Delete "Metals"?', text: '…', action: 'Delete', danger: true })) …
- */
 type Ask = { title: string; text?: string; action: string; danger?: boolean }
 
 const dialog = ref<HTMLDialogElement>()

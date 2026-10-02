@@ -80,11 +80,6 @@ const { data, error, loading, refresh } = useFetch<Overview>(
 )
 const o = computed(() => data.value)
 
-/**
- * The four numbers as shown: when they first arrive they count from 0 to
- * their values over 500 ms, so they read as live counts rather than labels.
- * A refresh writes the new values straight in; reduced motion does too.
- */
 const shown = reactive({ views: 0, takers: 0, average: 0, best: 0 })
 let counting = 0
 watch(
@@ -129,8 +124,6 @@ const BLOOM_LABEL: Record<string, string> = {
   evaluate: "Evaluate",
   create: "Create",
 }
-// The number a teacher acts on: an average under 75%, the passing mark in
-// Philippine schools (DepEd Order No. 8, s. 2015).
 const low = computed(
   () =>
     !!o.value?.takers && o.value.average != null && o.value.average < PASSING,
@@ -159,9 +152,6 @@ const dayLabel = (d: Date) =>
   d.toLocaleDateString("en", { month: "short", day: "numeric" })
 const hovered = ref<number | null>(null)
 
-// A quiz that was shared once and taken off the link is not a draft any
-// more: it has attempts, or results it released. "Draft" is for one that has
-// never been shared.
 const sharedBefore = computed(
   () =>
     !!o.value &&
@@ -270,12 +260,6 @@ const REASON: Record<string, string> = {
       </aside>
     </div>
 
-    <!--
-      Nothing boxed (Kyle, 21:40, on an annotated screenshot): the quiz's own
-      panel is pinned to the window's right edge at full height, as the
-      sidebar is on the left, and the numbers and lists run down the page
-      itself, split by lines.
-    -->
     <div v-else-if="o" class="layout">
       <div class="main-scroll">
         <div class="main">
@@ -695,9 +679,6 @@ const REASON: Record<string, string> = {
 </template>
 
 <style scoped>
-/* The overview fills the content area, so its panel can reach the window's
-   right edge; the layout answers to the room it has (a container query),
-   not to the window, since the left sidebar takes 64 or 248 pixels of it. */
 .overview {
   flex: 1;
   container-type: inline-size;
@@ -709,8 +690,6 @@ const REASON: Record<string, string> = {
   color: var(--muted);
 }
 
-/* While the numbers load: the page's own two columns, each with its first
-   rows in place, so nothing moves when the data lands. */
 .skel-head {
   display: flex;
   align-items: center;
@@ -738,9 +717,6 @@ const REASON: Record<string, string> = {
   gap: 8px;
 }
 
-/* The window's height under the top bar, split in two columns that each
-   scroll on their own: the page never scrolls, so no page scrollbar stands
-   between the panel and the window's edge. */
 .layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 360px;
@@ -752,22 +728,15 @@ const REASON: Record<string, string> = {
   scrollbar-gutter: stable;
 }
 
-/* The page itself: the numbers and the lists on the background, a line
-   between sections, no box around any of them. */
 .main {
   width: min(100%, var(--page-w));
   margin-inline: auto;
   padding: 28px var(--page-pad) 64px;
 }
 
-/* The quiz's panel, pinned as the left sidebar is: below the top bar, the
-   window's full height, scrolling on its own. */
 .side {
   overflow-y: auto;
   border-left: 1px solid var(--line);
-  /* A shade at the foot while more of the panel lies below, and at the top
-     once it has scrolled: the cover gradients scroll with the content and
-     hide each shade at its own end. */
   background:
     linear-gradient(var(--surface) 30%, transparent) center top / 100% 48px
       no-repeat local,
@@ -958,8 +927,6 @@ const REASON: Record<string, string> = {
     font-size: 12px;
     color: var(--muted);
   }
-  /* The number a teacher acts on: an average under the passing mark is the
-     only red on the page above the fold. */
   &[data-low] strong,
   &[data-low] small {
     color: var(--bad);
@@ -996,8 +963,6 @@ const REASON: Record<string, string> = {
   width: min(100%, 22px);
   border-radius: var(--radius-sm) var(--radius-sm) 0 0;
   background: var(--chart);
-  /* The bars grow from the baseline in date order, 20 ms apart: the data
-     is drawn, left to right, as a count over days. */
   transform-origin: bottom;
   animation: grow-up 400ms var(--ease-emphasized-decelerate) both;
   animation-delay: calc(var(--i, 0) * 20ms);
@@ -1351,11 +1316,6 @@ dd {
   }
 }
 
-/* Too narrow for a panel beside the page (a phone, or a laptop with the
-   sidebar open): one column, in the design's order (the quiz, its numbers,
-   who answered, then the rest), still flat, a line between every two
-   sections. The columns step aside (display: contents) so their sections
-   can be reordered among each other. */
 /* On a phone, the two small text controls reach 44 px by padding alone. */
 @container (max-width: 900px) {
   .more {
@@ -1387,8 +1347,6 @@ dd {
     display: flex;
     flex-direction: column;
     height: auto;
-    /* The grid's align-items: start would shrink every section to its
-       content in a column; a column stretches them to the full width. */
     align-items: stretch;
     padding: 20px 16px 56px;
   }

@@ -7,34 +7,34 @@ import Icon from "../components/Icon.vue"
 import LogoMark from "../components/LogoMark.vue"
 import { useCookie } from "../composables/cookie"
 import { pageCrumb } from "../composables/crumb"
-import { quizColor, useQuizzes } from "../composables/quizzes"
+import { api } from "../composables/api"
+import { quizColor, refreshQuizzes, useQuizzes } from "../composables/quizzes"
+import { toast } from "../composables/toast"
 
-/*
- * The creator's app around every page: a top bar and a sidebar.
- *
- * A computer's bar is laid out like Kajabi's (Kyle's reference, 23:20): the
- * QuizApp chip over the sidebar's column, the trail to the page from where
- * the page begins, and on the right a search icon and the account. The fold
- * toggle sits at the top of the sidebar itself.
- *
- * A phone's bar is the menu, QuizApp centered, search and the account; inside
- * a quiz it is the menu, the quiz's title and Edit. Its sidebar is a drawer.
- */
 const route = useRoute()
 const router = useRouter()
 
-// ---- the sidebar ------------------------------------------------------------
-// A computer folds it to an icon rail and remembers that in a cookie; a phone
-// opens it as a drawer over the page, closed on every page change.
+// New quiz makes a blank quiz and opens it in the editor; the prompt box on Home is the way to an AI draft.
+const creating = ref(false)
+async function newQuiz() {
+  if (creating.value) return
+  creating.value = true
+  try {
+    const { id } = await api<{ id: number }>("/quizzes/blank", {
+      method: "POST",
+    })
+    refreshQuizzes()
+    await router.push({ name: "edit", params: { id } })
+  } catch (e) {
+    toast(e instanceof Error ? e.message : "The quiz was not created.")
+  } finally {
+    creating.value = false
+  }
+}
+
 const foldedCookie = useCookie("qa_sidebar")
 const folded = computed(() => foldedCookie.value === "folded")
 const drawer = ref(false)
-// The width animates for the fold and for nothing else. A transition left on
-// the sidebar for good also ran whenever the phone's layout gave way to the
-// computer's, growing the column from the drawer's width: a full-page capture
-// passes the view through a phone size, and a ResizeObserver on the sidebar
-// read 247, 0, 25, 100, 149, 202 ... 247 px across one, the picture taken at
-// 202.
 const folding = ref(false)
 let foldTimer: number | undefined
 function fold() {
@@ -72,8 +72,6 @@ const quizTitle = computed(() => quizEntry.value?.title ?? "Quiz")
 const quizTint = computed(() =>
   quizColor(quizEntry.value ?? { id: quizId.value ?? 0 }),
 )
-// The quiz's own pages, in its sidebar (Kyle, 22:58), the way a project's
-// sidebar works.
 const quizNav = computed(() => {
   const base = `/app/quiz/${quizId.value}`
   return [
@@ -137,13 +135,6 @@ const trail = computed<Crumb[]>(() => {
   return []
 })
 
-// ---- one left edge for the trail and the page --------------------------------------
-// A page's column is at most 1120 px, centered in the space beside the
-// sidebar (Kyle, 23:50). The trail moves right by the same amount, so it
-// still starts where the page does. A quiz's overview keeps its 360 px panel
-// at the window's edge while it is wider than 900 px, and centers its page in
-// what is left, less the scrollbar its page column always keeps room for
-// (measured once, since its width depends on the platform).
 const pageW = ref(1120)
 const PANEL_W = 360
 const contentEl = ref<HTMLElement>()
@@ -286,17 +277,16 @@ function closeSearch() {
     >
       <!-- The fold toggle, at the top of the sidebar it folds (Kyle, 23:22). -->
       <div class="sidebar-top">
-        <!-- A new quiz starts from a request or a module, in home's prompt box.
-             An action, not a page: the plus in a filled circle, as Claude's
-             app draws New chat, and no fill on the row but the hover's. -->
-        <RouterLink
-          :to="{ name: 'home', query: { new: '1' } }"
+        <button
+          type="button"
           class="new-quiz"
           :title="folded ? 'New quiz' : undefined"
+          :disabled="creating"
+          @click="newQuiz"
         >
           <span class="plus"><Icon name="plus" /></span>
           <span class="label">New quiz</span>
-        </RouterLink>
+        </button>
         <button
           class="icon-button fold"
           :aria-label="folded ? 'Show the sidebar' : 'Hide the sidebar'"
@@ -432,8 +422,6 @@ button {
   display: none;
 }
 
-/* The QuizApp chip over the sidebar's column, so the trail starts where the
-   page does; folded to the mark when the sidebar folds. */
 .brand-slot {
   flex: none;
   width: calc(var(--side) - 12px);
@@ -473,8 +461,6 @@ button {
   align-items: center;
   gap: 8px;
   min-width: 0;
-  /* The bar's 8px gap plus this: the page's own inset, and as far again as
-     the page column is moved to center it. */
   padding-left: calc(var(--page-pad) - 8px + var(--shift, 0px));
   font-size: 14px;
   color: var(--muted);
@@ -577,8 +563,6 @@ button {
       min-width 0.2s var(--ease);
   }
 
-  /* The circle's center and the label's start are the rows' icon center
-     (x 32) and label start (x 54). */
   .new-quiz {
     display: flex;
     flex: 1;
@@ -588,6 +572,11 @@ button {
     height: 40px;
     padding: 0 10px 0 6px;
     border-radius: var(--radius-md);
+    border: 0;
+    background: none;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
     color: var(--ink);
     text-decoration: none;
     white-space: nowrap;
@@ -744,8 +733,6 @@ button {
     border-radius: var(--radius-tile);
   }
 
-  /* Folded: an icon rail. Labels and headings leave; each item's name is
-     its tooltip instead. */
   &[data-folded] {
     width: 64px;
     min-width: 64px;
@@ -790,25 +777,17 @@ button {
   flex-direction: column;
   /* Every page's column (at most 1120 px) centered beside the sidebar. */
   align-items: center;
-  /* The column scrolls, not the document, and keeps its scrollbar's room so
-     a page's width is the same whether it scrolls or not. */
   height: calc(100dvh - 60px);
   overflow-y: auto;
   scrollbar-gutter: stable;
 }
-/* The overview scrolls its two columns itself and pins its panel to the
-   window's edge, so it keeps no gutter here. */
 .content:has(.overview) {
   scrollbar-gutter: auto;
 }
-/* The overview fills the width itself: its panel is pinned to the window's
-   edge, and it centers its own page beside the panel. */
 .content > :deep(.overview) {
   align-self: stretch;
 }
 
-/* ---- a phone: the menu, QuizApp centered, search and the account; the
-   sidebar a drawer over the page ---- */
 @media (max-width: 767px) {
   .topbar {
     padding-inline: 8px;
@@ -908,9 +887,6 @@ button {
     z-index: 15;
     width: min(300px, 85vw);
     min-width: 0;
-    /* Closed, the drawer is out of sight, out of the tab order, and casts
-       no shadow: a shadow on the box parked off screen ran down the page's
-       left edge. It hides once the slide out has finished. */
     translate: -100% 0;
     visibility: hidden;
     transition:

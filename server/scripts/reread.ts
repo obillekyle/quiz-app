@@ -1,14 +1,3 @@
-/**
- * Reads a quiz's files again and checks its quotes against the new text.
- *
- * For a file uploaded before transcription existed (a scanned PDF or a photo
- * stored with no text), so its questions can be grounded now. The read is
- * the same one an upload gets; each question's quote is then looked for in
- * the pages, and `grounded`, `sourcePage` and `sourceFile` are set from what
- * is found, as a save would set them.
- *
- *   bun scripts/reread.ts <quizId>
- */
 import DB, { initDB } from 'bakery-orm'
 import { ground } from '../src/ai/ground.ts'
 import { startReading, whenRead } from '../src/quiz/read.ts'

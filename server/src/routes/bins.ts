@@ -3,12 +3,6 @@ import { Hono } from 'hono'
 import { HTTPException } from 'hono/http-exception'
 import { requireUser, type User } from '../auth/session.ts'
 
-/**
- * Bins: named folders a teacher sorts quizzes into. A quiz sits in one bin or
- * in none (`quizzes.bin`), and a bin belongs to one account: every query here
- * carries the signed-in user as the owner, so a bin id from another account
- * answers as a bin that does not exist.
- */
 export const bins = new Hono<{ Variables: { user: User } }>()
 
 bins.use('*', requireUser)
@@ -41,8 +35,6 @@ bins.get('/', async (c) => {
     if (q.bin == null || Number(q.archived)) continue
     count.set(Number(q.bin), (count.get(Number(q.bin)) ?? 0) + 1)
   }
-  // Sorted here rather than in SQL: SQLite's own order puts every capital
-  // before every small letter, so "Zoology" would come before "algebra".
   return c.json(
     (rows as any[])
       .map((b) => ({ id: Number(b.id), name: String(b.name), count: count.get(Number(b.id)) ?? 0 }))

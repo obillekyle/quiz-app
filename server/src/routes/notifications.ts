@@ -2,12 +2,6 @@ import DB from 'bakery-orm'
 import { Hono } from 'hono'
 import { requireUser, type User } from '../auth/session.ts'
 
-/**
- * The bell: what happened on the user's quizzes, newest first. A response
- * finished, or a respondent's report. Nothing is stored for it: the items are
- * the responses and reports themselves, and "unread" is whatever came after
- * the bell was last opened (`users.noticesSeenAt`).
- */
 export const notifications = new Hono<{ Variables: { user: User } }>()
 
 notifications.use('*', requireUser)

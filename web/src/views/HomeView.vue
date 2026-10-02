@@ -16,8 +16,6 @@ import { toast } from "../composables/toast"
 const route = useRoute()
 const { userdata } = useAuth()
 const { quizzes, loading, error, refresh } = useQuizzes()
-// The cards' response lines: read again on every visit after the first, so a
-// class that answered while another page was open shows up.
 const activity = useActivity()
 onMounted(() => {
   if (activity.data.value) activity.refresh()
@@ -35,8 +33,6 @@ const greeting = computed(() => {
 const router = useRouter()
 const box = ref<InstanceType<typeof PromptBox>>()
 
-// The sidebar's New quiz lands here with ?new=1: the cursor goes to the prompt
-// box, and the address loses the flag so a refresh does not repeat it.
 watch(
   () => route.query.new,
   async (n) => {
@@ -233,9 +229,6 @@ const removeBin = useAction(async () => {
       </div>
     </div>
 
-    <!-- The bins: All, a chip for each bin, and the way to make one. The row
-         waits for a first quiz or a first bin, so a new account's empty
-         page stays one sentence. -->
     <div v-if="quizzes.length || bins.length" class="bins">
       <div class="chips" role="group" aria-label="Bins">
         <button
@@ -302,7 +295,7 @@ const removeBin = useAction(async () => {
         </button>
         <span v-if="current && editing !== 'rename'" class="bin-actions">
           <button btn="quiet" type="button" @click="edit('rename')">
-            Rename
+            Rename bin
           </button>
           <button
             btn="quiet"
@@ -469,8 +462,6 @@ h1 {
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  /* The count: the ink at 70%, which still reads on the chosen chip's fill
-     where the muted gray falls under 4.5:1. */
   .n {
     font-weight: 500;
     font-variant-numeric: tabular-nums;
@@ -598,9 +589,6 @@ h1 {
     width: 44px;
     height: 44px;
   }
-  /* The chips stay on one line and slide sideways, out to the screen's
-     edges. The row's own padding keeps a focus ring from being clipped,
-     and the margin takes that padding back out of the layout. */
   .chips {
     flex-wrap: nowrap;
     margin: -4px calc(-1 * var(--page-pad));

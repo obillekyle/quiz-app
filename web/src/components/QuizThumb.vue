@@ -4,13 +4,6 @@ import { computed, ref, watch } from "vue"
 import { inkFor } from "../composables/color"
 import { quizColor } from "../composables/quizzes"
 
-/**
- * A quiz's picture wherever a list or a page shows one: its cover; else its
- * icon on a tint of its color; else the first letter of its title in white
- * on its color. It fills the box its parent gives it. The icon is any
- * Iconify id, fetched from Iconify's API by @iconify/vue; the letter is
- * sized from `iconSize` too.
- */
 const props = withDefaults(
   defineProps<{
     id: number
@@ -24,8 +17,6 @@ const props = withDefaults(
   { title: "", icon: null, image: null, color: null, iconSize: 56 },
 )
 const tint = computed(() => quizColor({ id: props.id, color: props.color }))
-// The letter's ink: the design's white on every palette color (large text
-// passes at 3:1; the orange is 3.08), the dark ink on a light custom color.
 const ink = computed(() => inkFor(tint.value, 3))
 
 // A cover that fails to load (removed on another tab, say) falls back to the icon.

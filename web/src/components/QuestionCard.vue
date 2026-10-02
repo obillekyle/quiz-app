@@ -36,10 +36,6 @@ const words = (text: string) =>
 
 const LETTERS = "ABCDEF"
 
-// ---- the illustration -----------------------------------------------------------
-// A picture above the question: the teacher's own file, a figure cropped out
-// of the module's page by the AI, or one from Wikimedia Commons for a search
-// the AI names (Kyle, 23:45). It is saved with the question like any field.
 type Credit = {
   from: "upload" | "module" | "wikimedia"
   text: string
@@ -605,20 +601,11 @@ function addAccepted() {
   }
 }
 
-/* ---- arriving ----
-   The draft's cards come one after another, 60 ms apart (the stagger capped
-   at eight so a long quiz is not a long wait); a card the chat changed
-   flashes its border to the accent and back over 1.2 s, once; a card the
-   chat added slides into its place. In each case the card reveals top to
-   bottom, 40 ms a part: header, prompt, options, the rest. The attributes
-   and `--i` come from the list. */
 .qcard[data-rise] {
   --arrive: calc(min(var(--i, 0), 8) * 60ms);
   animation: rise-in 240ms var(--ease-emphasized-decelerate) both;
   animation-delay: var(--arrive);
 }
-/* The keyframes name only the middle, so the border ends on whatever the
-   card's own rules say (a missing quote keeps its red). */
 .qcard[data-changed] {
   --arrive: 0ms;
   animation: flash-border 1.2s var(--ease) both;
@@ -945,9 +932,6 @@ input {
   &[aria-pressed="true"] {
     border-color: var(--good);
   }
-  /* The fill is its own layer under the check, so it can grow into the
-     ring (from 0.6, 150 ms) while the ring holds still; the check then
-     sweeps in from the left. The choice is seen to take. */
   &::before {
     content: "";
     position: absolute;
@@ -960,9 +944,6 @@ input {
     scale: 1;
     animation: mark-fill 150ms var(--ease) both;
   }
-  /* Both ends named as inset(): the element's own clip-path is none, which
-     does not interpolate, so a from-only keyframe would flip rather than
-     sweep. `backwards` leaves the computed value at none once it has run. */
   &[aria-pressed="true"] svg {
     position: relative;
     animation: mark-draw 150ms var(--ease) backwards;
@@ -1247,8 +1228,6 @@ input {
   }
 }
 
-/* A phone: every control at least 44px tall. The header wraps to two rows,
-   kind and level on the first, points with move and delete on the second. */
 @media (max-width: 767px) {
   select,
   .points input,

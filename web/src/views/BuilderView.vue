@@ -29,8 +29,6 @@ const saved = ref<FullQuiz | null>(null)
 const title = ref("")
 const questions = ref<(Question & { _key: number })[]>([])
 let nextKey = 1
-// A deep copy by JSON: the data is plain, and structuredClone refuses Vue's
-// reactive proxies (DataCloneError).
 const keyed = (q: Question) => ({
   ...(JSON.parse(JSON.stringify(q)) as Question),
   _key: nextKey++,
@@ -44,18 +42,8 @@ const aiWorking = computed(
   () => working.value === "draft" || working.value === "chat",
 )
 
-/**
- * The draft's cards, by key range: they rise in one after another, the way
- * they were written. A card added by hand later has a key past the range
- * and simply appears.
- */
 const rising = ref<[number, number]>([0, 0])
 const rises = (key: number) => key >= rising.value[0] && key < rising.value[1]
-/**
- * The cards a chat reply changed, by key. The reply replaces every key, so
- * a changed card is one whose content (as saved) was not on screen before
- * the reply; it flashes its border once.
- */
 const changed = ref(new Set<number>())
 /** The cards a chat reply added, by key: each slides into its place. */
 const added = ref(new Set<number>())
@@ -64,12 +52,6 @@ const removed = ref(0)
 /** The reply whose summary line (what changed) is shown under its text. */
 const lastReply = ref(0)
 
-/**
- * The reply that just arrived streams in word by word, about 18 ms a word
- * and never longer than 1.6 s in all. The text comes whole from the server;
- * this is a reading pace, not the network's. Under reduced motion the whole
- * text is on screen at once.
- */
 const stream = ref<{ id: number; shown: number; tokens: string[] } | null>(null)
 let streamFrame = 0
 function streamReply() {
@@ -87,12 +69,6 @@ function streamReply() {
     return
   }
   stream.value = { id: m.id, shown: 1, tokens }
-  // The pace is counted from the first frame drawn, not from here: the reply
-  // redraws every card first (125 to 170 ms on a two-core laptop), and the
-  // words due in that time landed in one lump, nine at once. The 1.6 s is
-  // counted from here, so the redraw comes out of a long reply's time. The
-  // clock is performance.now(): the frame's own timestamp is the time the
-  // frame was asked for, before the redraw.
   const arrived = performance.now()
   let t0 = 0
   let per = 18
@@ -175,6 +151,7 @@ onMounted(async () => {
   // A quiz fresh from the prompt box has the request and no questions yet.
   if (
     !saved.value!.questions.length &&
+    saved.value!.messages.length &&
     !saved.value!.messages.some((m) => m.role === "ai")
   ) {
     aiOpen.value = true
@@ -273,8 +250,6 @@ async function chat(text: string, sources: number[]) {
         body: { message: text, sources },
       }),
     )
-    // A card the list did not hold before: changed in place, or, past the
-    // old count, added (the AI appends).
     const flagged = questions.value.filter(
       (q) => !before.has(JSON.stringify(strip([q])[0])),
     )
@@ -387,11 +362,6 @@ function add(kind: Kind) {
       ?.focus(),
   )
 }
-/**
- * A quiz has one word bank and one crossword. A question joining a set takes
- * the set as its other members have it, so the title and the bank's extra
- * words stay the same on every member.
- */
 function setAnswered(i: number, style: AnswerStyle) {
   const q = questions.value[i]
   if (!q) return
@@ -433,9 +403,6 @@ const points = computed(() =>
 const panel = ref<"chat" | "files">("chat")
 const phoneTab = ref<"chat" | "questions" | "files">("questions")
 
-// The AI panel (chat and files) is the onboarding. It opens for a quiz started
-// from the prompt box (?ai=1), for one with nothing in it yet, and on "Edit
-// with AI"; a quiz opened from the list is the plain editor.
 const aiOpen = ref(route.query.ai === "1")
 function openAi() {
   aiOpen.value = true
@@ -484,10 +451,6 @@ const secs = (ms?: number) => (ms ? `${Math.round(ms / 1000)} s` : "")
 const isApiError = (e: unknown): e is ApiError => e instanceof ApiError
 void isApiError
 
-// ---- a quiz people have already answered ---------------------------------------
-// The count of finished responses, from the shared quiz list. An edit keeps
-// each question's row, so answers stay with their questions; the note says
-// what an edit does and does not change.
 const { quizzes: allQuizzes } = useQuizzes()
 const answeredBy = computed(
   () =>
@@ -623,8 +586,6 @@ const answeredBy = computed(
                     ><LogoMark :size="18"
                   /></span>
                   <div class="bubble">
-                    <!-- The words land one by one, a 2px bar after the last
-                         so far; a screen reader gets the whole text. -->
                     <template v-if="stream?.id === m.id">
                       <p aria-hidden="true">
                         {{ streamText }}<i class="caret" />
@@ -693,8 +654,6 @@ const answeredBy = computed(
                 </div>
               </div>
             </div>
-            <!-- Until the chat has an ask of its own: what it is for, and three
-                 asks it can take, each filling the box. -->
             <div
               v-if="saved && fresh && !working && !pendingText"
               class="starter"
@@ -929,8 +888,6 @@ const answeredBy = computed(
 .save {
   min-width: 92px;
 
-  /* Nothing to save: Material's disabled fill (12% of the ink, 38% text)
-     rather than the accent at 60%, which read as a live button. */
   &:disabled {
     opacity: 1;
     border-color: transparent;
@@ -1078,8 +1035,6 @@ const answeredBy = computed(
     gap: 10px;
     color: color-mix(in srgb, var(--ink) 70%, transparent);
   }
-  /* The lines under a reply (its numbers, what it changed) come after the
-     last word has landed. */
   .after {
     animation: fade-in var(--fast) var(--ease) both;
   }
@@ -1088,8 +1043,6 @@ const answeredBy = computed(
     color: var(--ink);
   }
 }
-/* The bar after the newest word: 2px, in the line's height and not its
-   width, so the text wraps as it will once it is whole. */
 .caret {
   display: inline-block;
   width: 0;
@@ -1381,9 +1334,6 @@ main {
     }
   }
 
-  /* Both selectors: the wide layout's `[data-ai]` rule outranks `.workspace`
-     alone, and with the rail hidden the one shown pane would land in its
-     56px column (a 6px chat box at 390). */
   .workspace,
   .workspace[data-ai] {
     grid-template-columns: 1fr;
@@ -1404,8 +1354,6 @@ main {
   main[data-phone-show] {
     display: block !important;
   }
-  /* The bar: back, the name with its status as a caption under it, Save.
-     The print is in the overview's Quiz options, so the name gets the row. */
   .topbar {
     height: auto;
     min-height: 60px;

@@ -27,11 +27,6 @@ export type QuestionDraft = {
   page: number | null
   /** The supporting sentence, word for word from the material. */
   quote: string | null
-  /**
-   * An illustration, kept with the question: a file under data/illustrations,
-   * what it shows, and where it came from. The AI never writes these; the
-   * builder does, and a chat edit keeps them.
-   */
   image?: string | null
   imageAlt?: string | null
   imageCredit?: { from: 'upload' | 'module' | 'wikimedia'; text: string; url: string | null } | null
@@ -75,11 +70,6 @@ const RULES = `Rules for every question:
 
 export type Draft = { title: string; language: 'en' | 'fil'; reply: string; questions: QuestionDraft[] }
 
-/**
- * A whole quiz from a request and the material (PDFs and photos sent inline).
- * Without a stated count and mix: 10 questions, mostly multiple choice with
- * two true or false and two identification; essays only when asked.
- */
 export async function draftQuiz(request: string, files: Part[]) {
   const system = `You write quizzes for teachers and students in the Philippines from material they provide.
 
@@ -114,11 +104,6 @@ export type Op =
 
 export type Refine = { reply: string; title: string | null; ops: Op[] }
 
-/**
- * Edits an existing quiz from a chat message. The AI answers with operations
- * (add, update, remove, move) rather than a whole new quiz, so changing one
- * question costs one question's worth of output, not twenty.
- */
 export async function refineQuiz(message: string, title: string, questions: QuestionDraft[], material: Part[]) {
   const system = `You edit a quiz someone is building, following their message.
 
@@ -173,16 +158,6 @@ export type MissRow = {
   picks: { text: string; correct: boolean; n: number }[]
 }
 
-/**
- * "What to teach again": a short note for the teacher from the questions
- * the class missed. The note names the questions by number with their miss
- * counts and says how many finished, so every claim can be checked against
- * the table on the overview; it is written about the class and the
- * material, never to the teacher. Under five finished, it opens by saying
- * the sample is too small to tell a pattern from, and reports rather than
- * generalizes. Each respondent is one row of counts: no answer text leaves
- * the server beyond the options' labels.
- */
 export async function teachAgainNote(quiz: { title: string; language: 'en' | 'fil'; finished: number; questions: MissRow[] }) {
   const n = quiz.finished
   const few = n < 5
@@ -240,14 +215,6 @@ const missedIn = (q: StudyRow) => q.outcome === 'wrong' || q.outcome === 'partia
 const pts = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1))
 const outOf = (q: StudyRow) => `${pts(q.score)} of ${pts(q.points)} ${q.points === 1 ? 'point' : 'points'}`
 
-/**
- * The whole of what the AI is sent about one attempt: the quiz's title and
- * language, the score, and a line per question with its outcome. A question
- * that was missed carries what it cost, so the note can put the costliest
- * topic first, and its page and supporting sentence, when it has them. The
- * respondent's name, section, email and answers are not in it; the function
- * is not given them.
- */
 export function studyNoteRequest(quiz: StudyQuiz) {
   const lines = quiz.questions.map((q) => {
     const outcome =
@@ -278,18 +245,6 @@ export function studyNoteRequest(quiz: StudyQuiz) {
   ].join('\n')
 }
 
-/**
- * "What to review": a study note for one respondent, from their own finished
- * attempt. One sentence on what they have down, then at most three topics to
- * go over, each citing its questions by number and pointing into the
- * material. It is written to the respondent, after the results are shown,
- * so it may name the idea a question turned on.
- *
- * The reply is not trusted as it comes: strings are trimmed to a line, the
- * list is cut to three, and a pointer that names a page none of the missed
- * questions carries is dropped, so a page is never invented. A reply with
- * nothing to review, when something was missed, is refused as unusable.
- */
 export async function studyNote(quiz: StudyQuiz) {
   const system = `You read one respondent's results on a quiz and write them a short study note: what they have down, what to review, and where in the material to look.
 
@@ -337,11 +292,6 @@ How to write it:
   return { ...res, data: { strengths, review } satisfies StudyNote }
 }
 
-/**
- * Applies operations to a list. Numbers refer to the list before any
- * operation, as the AI was told, so each question is tracked by its original
- * place while the list changes underneath.
- */
 export function applyOps<T>(list: T[], ops: Op[], make: (q: QuestionDraft) => T, update: (old: T, q: QuestionDraft) => T) {
   type Slot = { orig: number | null; item: T; gone?: boolean }
   let slots: Slot[] = list.map((item, i) => ({ orig: i + 1, item }))

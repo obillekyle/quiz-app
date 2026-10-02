@@ -3,23 +3,6 @@ import { computed, ref, watch } from "vue"
 import Icon from "./Icon.vue"
 import type { Advice } from "../composables/take"
 
-/**
- * "What to review": the AI's study note on a finished attempt, offered once
- * its results show. Before it is asked for, a card says what it is and what
- * is not sent. While it is written, the card and the rows under it are drawn
- * in the shape of what is coming. Written, it is one sentence on what went
- * right, then up to three topics to go over, each with the questions it
- * rests on and where in the material to look.
- *
- * With nothing missed the server's one sentence stands alone: no rows, and
- * no line saying the AI wrote it, since it did not.
- *
- * The page holds the note and asks for it, so the card under the score and
- * the one above the review are one note in one state. Above the review the
- * written note is folded to its title and the names of its topics, with the
- * rows behind "Show the note": whole, it is 616px tall on a phone and took
- * the first screen from the answers the review is opened for.
- */
 const props = defineProps<{
   note: Advice | null
   /** The note is being written. */
@@ -38,12 +21,6 @@ const topics = computed(
   () => props.note?.review.map((r) => r.topic).join(", ") ?? "",
 )
 
-/**
- * The note arrived while this card was on screen, as against a card mounted
- * with its note already written (a reload, or the way to the review). Only
- * the first is a reveal, and only a reveal animates. A note asked for from
- * the folded card opens it: it was asked for to be read.
- */
 const reveal = ref(false)
 watch(
   () => props.note,
@@ -173,9 +150,6 @@ h2 {
   line-height: 1.5;
   text-wrap: pretty;
 }
-/* Folded and unfolded by a text button in the accent, as a question's hint
-   is: 44px to the finger, its chevron turning with it. The margins take
-   back what the target adds, so the folded card stays short. */
 .fold {
   display: inline-flex;
   align-items: center;
@@ -216,8 +190,6 @@ h2 {
   }
 }
 
-/* While the note is written: the working dots, then lines where the
-   sentence will be, and two tiles where the rows will be. */
 .working {
   display: flex;
   align-items: center;
@@ -300,8 +272,6 @@ h2 {
   color: var(--muted);
 }
 
-/* The reveal, in reading order: the sentence, each row after the one
-   above, then the line under them. Each rises 8px into place. */
 .study[data-reveal] {
   .strengths,
   .rows > li,

@@ -13,12 +13,6 @@ import {
 } from "../composables/respondents"
 import { edited, type FullQuiz } from "../composables/quizzes"
 
-/**
- * A quiz's Respondents page: everyone who answered, newest first unless
- * sorted by name or score, with their score, and the ones still answering;
- * each opens their answers. The CSV link downloads every row for a
- * spreadsheet.
- */
 type Row = {
   id: number
   name: string
@@ -221,9 +215,6 @@ const low = (r: Row) => below(r.score, r.total)
   font-size: 14px;
   color: var(--muted);
 }
-/* The sort, the search and the download, one row at the bar's right end:
-   the group takes the room beside the summary, so the three stay on a line
-   where there is one, and wrap only on a phone. */
 .tools {
   display: flex;
   flex: 1;
@@ -324,9 +315,6 @@ const low = (r: Row) => below(r.score, r.total)
   color: white;
   font-weight: 650;
 }
-/* The name, and under it the section when one was given. The block holds
-   two lines' height either way, so a row without a section is as tall as
-   one with it and the list keeps one rhythm. */
 .who {
   display: flex;
   flex: 1;
@@ -387,8 +375,6 @@ const low = (r: Row) => below(r.score, r.total)
 }
 
 @media (max-width: 560px) {
-  /* The summary takes its own line; the controls take the whole next one
-     (`flex: 1` above would otherwise seat them beside it, in a column). */
   .tools {
     flex: none;
     width: 100%;

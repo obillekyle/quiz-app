@@ -1,17 +1,3 @@
-/**
- * Demo data for the presentation, on Jose Reyes's account (jose@example.com).
- *
- * Clears what test runs left behind, keeps quiz 16 ("Science 7: Metals and
- * Their Properties", shared) and gives it a class of respondents who answer
- * through the public API, so every grade and every AI verdict in the demo is
- * the app's own. Their finishing times are then spread over the last nine
- * days for the chart, and a Filipino quiz is drafted from the sample module.
- * Nothing on any other teacher's account is touched.
- *
- * The API must be running on :3221.
- *
- *   bun scripts/demo.ts
- */
 import { Database } from 'bun:sqlite'
 import { unlinkSync } from 'node:fs'
 
@@ -66,8 +52,6 @@ const questions = db.query('select id, kind, answer, choices from questions wher
   choices: string
 }[]
 
-// How hard each question is, by position: the economics of copper wiring, the
-// nonmetal under a hammer and responsible mining are the ones a class misses.
 const HARD = [0.05, 0.2, 0.5, 0.25, 0.4, 0.15, 0.3, 0.2, 0.45, 0, 0.1]
 const ESSAYS = [
   'Mercury is toxic. Its vapor can damage the brain and kidneys, so a broken thermometer must never be cleaned with bare hands or a vacuum cleaner. Open the windows, keep people away, wear gloves, and collect the beads with stiff paper into a sealed container for proper disposal.',

@@ -6,14 +6,6 @@ import Sparkline from "./Sparkline.vue"
 import { useActivity } from "../composables/activity"
 import { edited, type QuizSummary } from "../composables/quizzes"
 
-/**
- * A quiz on the home page: a card in the grid, a row in the list. The
- * thumbnail is its cover, else its icon, else its first letter on its color.
- * The meta line counts the questions and the finished responses; the time
- * of the last edit is the card's title. A globe marks a quiz anyone with
- * the link can answer, and the square beside it is the last 14 days of
- * finished responses, one request for every card.
- */
 const props = defineProps<{ quiz: QuizSummary; layout: "grid" | "list" }>()
 const activity = useActivity()
 const counts = computed(() => activity.of(props.quiz.id))
@@ -164,8 +156,6 @@ const responses = computed(() => {
   display: grid;
 }
 
-/* The list: a row with a small swatch, the title over its meta line, and
-   the globe and the sparkline at the right edge. */
 .card[data-layout="list"] {
   flex-direction: row;
   align-items: center;

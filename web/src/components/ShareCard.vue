@@ -7,21 +7,6 @@ import { useAction } from "../composables/fetch"
 import { refreshQuizzes, toldText, type FullQuiz } from "../composables/quizzes"
 import { toast } from "../composables/toast"
 
-/**
- * A quiz's sharing: while it is shared, the link, a copy button and its QR
- * code; while it is a draft, the way to share it. On the overview's panel,
- * and larger on the quiz's Sharing page, with the QR code to download.
- *
- * Above the link, the choice of Practice, Test or Graded: a bundle over four
- * of the quiz's settings. Practice checks each answer as it is confirmed and
- * locks it, with hints and retakes. Test saves answers unchecked, lets them
- * change until the quiz is finished and shows the score and the answers
- * then; no hints, retakes allowed. Graded is Test with the results held
- * until released and one attempt per browser. Any other mix is Custom, a
- * state this control only reports. The small card shows the state in a
- * sentence with a way to the Sharing page; the large one carries the
- * control.
- */
 const props = withDefaults(
   defineProps<{
     quizId: number
@@ -431,9 +416,6 @@ const tabStop = (o: Choice) =>
 
 /* ---- practice, test or graded ---- */
 
-/* The overview's panel: the state in one line, with the way to change it.
-   The link's padding reaches 44 px without moving the line: an inline box's
-   vertical padding widens what a finger can hit and leaves the layout alone. */
 .mode-line {
   font-size: 13px;
   line-height: 1.5;

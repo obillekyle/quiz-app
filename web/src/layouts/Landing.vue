@@ -1,8 +1,5 @@
 <script setup lang="ts">
 import LogoMark from "../components/LogoMark.vue"
-// The other marks, inlined (`?raw`) because they are drawn in currentColor:
-// inside an <img> there is no current color to take. Inline they follow the
-// text, gray at rest and ink on hover, as cutvid's foot does.
 import livro from "../assets/brands/livro.svg?raw"
 import paldo from "../assets/brands/paldo.svg?raw"
 import okyle from "../assets/brands/okyle.png"
@@ -35,16 +32,12 @@ import okyle from "../assets/brands/okyle.png"
         <RouterLink to="/register">Create an account</RouterLink>
         <RouterLink to="/login">Sign in</RouterLink>
         <RouterLink to="/q/8FSqvXwx">Sample quiz</RouterLink>
-        <!-- At a phone's width the row breaks here: the account links on one
-             line, the legal pair on the next. -->
         <span class="nl" aria-hidden="true" />
         <RouterLink to="/privacy">Privacy</RouterLink>
         <RouterLink to="/terms">Terms</RouterLink>
       </nav>
     </div>
 
-    <!-- Where else Kyle is, as on cutvid and okyle.dev: his mark in color, the
-         others gray until hovered (Livro then shows its own colors). -->
     <nav class="foot-sites" aria-label="Elsewhere">
       <a href="https://okyle.dev/" rel="noopener">
         <img :src="okyle" width="26" height="26" alt="" />
@@ -146,8 +139,6 @@ import okyle from "../assets/brands/okyle.png"
   }
 }
 
-/* Each site with its own mark, at a size the mark can carry: the avatar is
-     square, the two wordmarks are wide, so the row aligns on their centers. */
 .foot-sites {
   display: flex;
   flex-wrap: wrap;

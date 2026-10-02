@@ -4,13 +4,6 @@ import { applyOps, type Op, type QuestionDraft } from './ai/quiz.ts'
 import { addressOf, within } from './limits.ts'
 import { gradeChoice, normalizeAnswer } from './quiz/grade.ts'
 
-/*
- * The rules the app's promises rest on, as plain functions with no database
- * and no AI: a quote is found or not, a typed answer matches or not, a chat
- * edit keeps each question's identity, a limit holds. Run with `bun test`
- * from server/.
- */
-
 const PAGE =
   'Most metals are solid at room temperature. Mercury is the only metal that is liquid at room temperature. ' +
   'It melts at about -38.8 °C, well below the freezing point of water.'
@@ -92,11 +85,6 @@ describe('multiple choice', () => {
   })
 })
 
-/*
- * Answers hang off question rows. A chat edit once rebuilt every row, which
- * deleted every respondent's answers; what keeps them now is that each
- * question carries its row's id through the AI's operations.
- */
 describe('a chat edit keeps each question its row', () => {
   type Saving = QuestionDraft & { id?: number | null }
   const before: Saving[] = [1, 2, 3, 4].map((n) => ({ ...question(`Question ${n}`), id: 100 + n }))

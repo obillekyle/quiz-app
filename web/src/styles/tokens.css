@@ -1,12 +1,3 @@
-/*
- * Design tokens. Components read these instead of writing colors and sizes
- * themselves, so dark mode and the black-and-white print look are one switch
- * on <html> rather than a rule in every component.
- *
- * Light values come from the QuizApp design (Figma, sampled from its screens
- * 2026-10-01): #f8f8f8 page, white cards, brown #5c3715 for the teacher's app,
- * purple #6b276c for the page a student takes a quiz on, #c40505 for delete.
- */
 @layer tokens {
   :root {
     /* Color */
@@ -27,9 +18,6 @@
     --warn: #a86a00;
     --bad: #c40505;
     --bad-soft: #ffe0d8; /* the option picked, when wrong */
-    /* Data marks: the brand brown fails the dataviz validator as a data color
-       (lightness 0.375, chroma 0.071: it reads gray); this step of the same
-       family passes the band, chroma and contrast checks on #fcfcfb. */
     --chart: #b4601d;
 
     /* Type */
@@ -46,9 +34,6 @@
     --fs-3xl: 36px;
     --lh: 1.5;
 
-    /* Space. `<div mt="sm" gap="md">`; names are read from here by
-       scripts/utilities.ts, so a new line here is a new value everywhere
-       after `bun run tokens`. */
     --space-0: 0px;
     --space-2xs: 2px;
     --space-xs: 4px;
@@ -62,8 +47,6 @@
     --space-5xl: 64px;
 
     /* Shape */
-    /* The shape scale: M3's steps, plus the stacked list's own two (a 20px
-       group clipping 6px tiles, Kyle's rule). Nothing else is a radius. */
     --radius-sm: 4px;
     --radius-tile: 6px;
     --radius-md: 8px;
@@ -84,15 +67,9 @@
     /* Layout */
     --topbar-h: 60px;
     --sidebar-w: 300px;
-    /* A page's side padding, and the trail's, so the trail starts above the
-       page's heading at every width. */
     --page-pad: clamp(16px, 3vw, 40px);
-    /* A page's column. AppLayout reads this to place the trail over it, so
-       the number is written once. */
     --page-w: 1120px;
 
-    /* Motion: Material's emphasized curve, and its two halves for a thing
-       arriving (decelerate) or leaving (accelerate). */
     --ease: cubic-bezier(0.2, 0, 0, 1);
     --ease-emphasized-decelerate: cubic-bezier(0.05, 0.7, 0.1, 1);
     --ease-emphasized-accelerate: cubic-bezier(0.3, 0, 0.8, 0.15);

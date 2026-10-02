@@ -5,19 +5,6 @@ import { extractText, getDocumentProxy } from 'unpdf'
 import { AiError } from '../ai/gemini.ts'
 import { transcribe } from '../ai/transcribe.ts'
 
-/*
- * Reading a file of material, once, as soon as it is uploaded (before the
- * prompt is even sent). A digital PDF's pages come from its text layer, with
- * no AI and in well under a second; a scanned page or a photo is transcribed
- * by the AI (`transcribe.ts`). The pages are stored on the `sources` row, and
- * every later step (the draft, chat edits, the grounding check) reads them
- * instead of the file.
- *
- * In memory, `running` holds the read in progress for each row, so a draft
- * can wait for the files it needs. A read cut short by a restart leaves its
- * row `reading` with nothing running; `whenRead` starts it again.
- */
-
 /** A page whose text layer holds fewer letters than this is a scan. */
 const THIN = 30
 /** Scanned pages go to the AI five at a time, two batches at once (Flash Lite allows 15 a minute). */

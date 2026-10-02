@@ -12,11 +12,6 @@ export type Question = QuestionDraft & {
   id: number
   /** A crossword word's place in the grid, worked out from the set's answers. */
   entry?: Placed | null
-  /**
-   * found: the quote is in the file. missing: the file has text and the quote
-   * is not in it. photo: the material is photos, so a person checks by eye.
-   * none: there is no material to check against.
-   */
   check: 'found' | 'missing' | 'photo' | 'none'
   /** The file the quote was found in, when it was found. */
   file: string | null
@@ -54,19 +49,9 @@ export async function ownQuiz(id: number, userId: number) {
   return q
 }
 
-/**
- * The cover's address. `image` holds the file's path under data/uploads
- * (`<quizId>/cover-<time>-<random>.<ext>`); the address carries the file's
- * name, which is unguessable and new on every upload, so it can be served
- * without a session (the shared quiz's page shows it) and cached for good.
- */
 export const coverUrl = (quizId: number, image: unknown) =>
   typeof image === 'string' && image ? `/api/quizzes/${quizId}/image/${image.split('/').pop()}` : null
 
-/**
- * A quiz's Settings page, as every reader of a quiz gets it: the builder,
- * the home list, the overview and the shared quiz's page.
- */
 export function settingsOf(q: any) {
   const mode = q.timeMode === 'question' || q.timeMode === 'overall' ? q.timeMode : 'none'
   return {
@@ -167,10 +152,6 @@ export async function fullQuiz(id: number) {
 const str = (v: unknown, max: number) => (typeof v === 'string' ? v.trim().slice(0, max) : '')
 const bad = (message: string) => new HTTPException(400, { message })
 
-/**
- * Makes a question safe to store, whoever wrote it (the AI or the builder):
- * the kind's own rules enforced, the rest given sensible defaults.
- */
 export function clean(q: any, n: number): QuestionDraft {
   const kind = KINDS.includes(q?.kind) ? q.kind : 'choice'
   const prompt = str(q?.prompt, 2000)
@@ -250,19 +231,6 @@ function picture(q: any): Pick<QuestionDraft, 'image' | 'imageAlt' | 'imageCredi
 /** A question as it is saved: one that names a row of this quiz keeps that row. */
 export type Saving = QuestionDraft & { id?: number | null }
 
-/**
- * Saves a quiz's questions in the order given, grounding each quote against
- * the material's pages. A found quote takes the page it was found on, which
- * may correct the page the AI gave.
- *
- * A question that carries the id of one of the quiz's rows is updated in
- * place; one without is inserted; a row the list no longer names is deleted.
- * Rows used to be deleted and inserted afresh on every save, and answers
- * hang off question rows with a cascade: fixing a typo, or any chat edit,
- * deleted every respondent's answers to every question, and the ids in each
- * attempt's saved layout went stale. Now only a question the maker removes
- * takes its answers with it.
- */
 export async function saveQuestions(quizId: number, list: Saving[]) {
   const sources = await loadSources(quizId)
   const pages = allPages(sources)

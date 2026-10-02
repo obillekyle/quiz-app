@@ -5,10 +5,6 @@ import QuizCard from "../components/QuizCard.vue"
 import { api } from "../composables/api"
 import { refreshQuizzes, useQuizzes } from "../composables/quizzes"
 
-/**
- * The sidebar's Archived: quizzes taken off Home. An archived quiz's link
- * does not open for respondents; Restore under its card puts it back.
- */
 const { quizzes, error, loading } = useQuizzes()
 const archived = computed(() => quizzes.value.filter((q) => q.archived))
 

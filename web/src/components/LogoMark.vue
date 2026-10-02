@@ -3,14 +3,6 @@ withDefaults(defineProps<{ size?: number }>(), { size: 32 })
 </script>
 
 <template>
-  <!--
-    QuizApp's mark, from Figma (Frame 293, re-exported with its outline): a
-    white lowercase "a" whose stem drops into a square, so the whole reads as
-    "q", with a black outline around both. The square follows `color`, which
-    the places that use the mark set to the primary (--accent). The outline is
-    Figma's, drawn one screen pixel wide at every size (non-scaling-stroke):
-    scaled with the mark it was 0.6px at 28px and invisible in a favicon.
-  -->
   <svg :width="size" :height="size" viewBox="1.5 1.6475 9 9" aria-hidden="true">
     <path
       fill-rule="evenodd"

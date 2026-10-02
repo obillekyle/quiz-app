@@ -25,10 +25,6 @@ export type QuizSettings = {
   showResults: boolean
   /** The "Show hint" control on each question, naming the topic and page. */
   showHints: boolean
-  /**
-   * When an answer is checked: "each" as the respondent confirms it, locked
-   * from then on; "end" when the quiz is finished, changeable until then.
-   */
   feedback: "each" | "end"
   resultsReleasedAt: number | null
   /** Identification answers checked by the AI beyond an exact match. */
@@ -67,20 +63,11 @@ function create() {
 
 let shared: ReturnType<typeof create> | undefined
 
-/**
- * The signed-in user's quizzes, fetched once and shared: the sidebar's recent
- * list and the home page read the same request. It lives in its own effect
- * scope, so it outlasts whichever component asked first.
- */
 export function useQuizzes() {
   shared ??= effectScope(true).run(create)!
   return shared
 }
 
-/**
- * A quiz's color: the one its settings chose, else one of the palette by its
- * id, steady across visits.
- */
 export const quizColor = (quiz: { id: number; color?: string | null }) =>
   quiz.color ?? PALETTE[(quiz.id - 1) % PALETTE.length]!.hex
 
@@ -253,10 +240,6 @@ export function refreshQuizzes() {
 const count = (n: number, one: string, many: string) =>
   `${n} ${n === 1 ? one : many}`
 
-/**
- * What releasing a quiz's held results does, for the confirmation: who is
- * emailed, and the essays still without a score.
- */
 export function releaseText(waiting: number, pending: number) {
   const told = waiting
     ? `${count(waiting, "person", "people")} who left an email ${waiting === 1 ? "gets" : "get"} one with the link.`

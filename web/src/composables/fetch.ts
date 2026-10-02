@@ -8,16 +8,6 @@ import {
 } from "vue"
 import { api, ApiError } from "./api"
 
-/**
- * Reads JSON from the server into refs, and reads it again when the path
- * changes. A path of null waits: nothing is fetched until it has one.
- *
- *     const { data, error, loading, refresh } = useFetch<{ quizzes: Quiz[] }>('/quizzes')
- *     const quiz = useFetch(() => `/quizzes/${route.params.id}`)
- *
- * A reply that arrives after a newer request was sent is dropped, so a quick
- * change of path never shows the older page's data.
- */
 export function useFetch<T>(
   path: MaybeRefOrGetter<string | null>,
   options: { immediate?: boolean } = {},
@@ -52,15 +42,6 @@ export function useFetch<T>(
   return { data, error, loading, refresh }
 }
 
-/**
- * Wraps something that changes data (signing in, saving a quiz) with the
- * state a form needs: `pending` while it runs, `error` when it fails.
- *
- *     const save = useAction((title: string) => api('/quizzes', { body: { title } }))
- *     await save.run('Metals')   // resolves undefined if it failed; see save.error
- *
- * A second `run` while one is pending is ignored, so a double click submits once.
- */
 export function useAction<A extends unknown[], R>(
   fn: (...args: A) => Promise<R>,
 ) {

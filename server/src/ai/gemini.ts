@@ -1,33 +1,9 @@
-/**
- * Gemini (and Gemma) over plain REST: `fetch` works the same on Bun and
- * Node, and the whole client is this file.
- *
- * Every call asks for JSON that matches a schema ("structured output"), so
- * the reply is parsed rather than scraped out of prose.
- */
 
 const BASE = 'https://generativelanguage.googleapis.com/v1beta/models'
 
 /** What a call is for; each job has its own chain of models. */
 export type Task = 'draft' | 'edit' | 'check' | 'essay' | 'insight' | 'read' | 'illustrate'
 
-/**
- * The free tier sets the chains (AI Studio's limits for this key, 2026-10-01):
- * every full Flash model allows 20 requests a day and 5 a minute; the Flash
- * Lite models 500 a day and 15 a minute; Gemma 4 14,400 a day and 30 a minute
- * but 16K tokens a minute. So the full models write drafts, where quality
- * shows, and everything frequent runs on Lite or Gemma.
- *
- * Measured the same evening:
- * - draft of 10 questions from the 3-page science module: 17.4 s on 3.6
- *   Flash, 18.3 s on 3-flash-preview, 10 of 10 quotes grounded on both.
- * - checking one typed answer ("merkury", "galium", "ductile ness"): Gemma 4
- *   26B 1.7 to 3.6 s, 3.1 Flash Lite 1.9 to 3.6 s, 3.5 Flash Lite 7 to 14 s;
- *   all three right on all three cases. Gemma 4 31B answered 503 and 500.
- * - the same small request: 1.6 s on 3.6 Flash, 40 s on 3.7, 97 s on
- *   flash-latest, 503 on 3.8: demand on one model swings, so each chain
- *   moves on to the next model rather than waiting.
- */
 const CHAINS: Record<Task, string[]> = {
   draft: [
     'gemini-3.6-flash',
@@ -42,11 +18,7 @@ const CHAINS: Record<Task, string[]> = {
   check: ['gemma-4-26b-a4b-it', 'gemini-3.1-flash-lite', 'gemini-3.5-flash-lite'],
   essay: ['gemini-3.1-flash-lite', 'gemini-3.5-flash-lite', 'gemma-4-26b-a4b-it'],
   insight: ['gemini-3.1-flash-lite', 'gemini-3.5-flash-lite', 'gemma-4-26b-a4b-it'],
-  // Transcribing photos and scanned pages, once per file: Flash Lite reads
-  // print well and has 500 a day; a full Flash only when both Lites rest.
   read: ['gemini-3.1-flash-lite', 'gemini-3.5-flash-lite', 'gemini-3-flash-preview'],
-  // Finding a figure on a page and naming a picture to search for: one call
-  // per question asked about, on the same models as reading.
   illustrate: ['gemini-3.1-flash-lite', 'gemini-3.5-flash-lite', 'gemini-3-flash-preview'],
 }
 
@@ -74,13 +46,6 @@ type Options = {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
-/**
- * Models that just refused, with when they may lead a chain again: two
- * minutes after "overloaded" (503) or a per-minute limit, and until the
- * daily reset (midnight Pacific, 07:00 UTC in October) after the day's
- * quota is spent. Without this, every request spent its first seconds on the
- * same refusing model (a 21 s draft against 17 s on the fallback alone).
- */
 const resting = new Map<string, number>()
 const nextPacificMidnight = () => {
   const d = new Date()
@@ -96,11 +61,6 @@ function thinking(model: string) {
   return undefined
 }
 
-/**
- * One structured call, tried down the task's chain (resting models last, at
- * most four attempts). Anything but overload, a rate limit, a timeout or an
- * unusable reply fails at once, with a message for the person waiting on it.
- */
 export async function generate<T>(o: Options): Promise<{ data: T; ms: number; model: string }> {
   const key = process.env.GEMINI_API_KEY
   if (!key) throw new AiError('The AI is not set up on this server (GEMINI_API_KEY is missing).', 503)
@@ -177,11 +137,6 @@ export async function generate<T>(o: Options): Promise<{ data: T; ms: number; mo
 }
 
 /** Gemini's schema vocabulary, spelled once. */
-/**
- * The models now and then write HTML entities into their JSON ("29.8 &deg;C",
- * "&#8211;"), which a page would show as they are. Every string of an answer
- * is decoded once, here, so a quiz stores the characters themselves.
- */
 const ENTITIES: Record<string, string> = {
   amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: '\u00a0', deg: '\u00b0', plusmn: '\u00b1',
   times: '\u00d7', divide: '\u00f7', micro: '\u00b5', middot: '\u00b7', ndash: '\u2013', mdash: '\u2014',

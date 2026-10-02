@@ -36,12 +36,6 @@ function sniff(bytes: Uint8Array): string | null {
   return null
 }
 
-/**
- * A quiz's cover, by the address `coverUrl` gives. It answers before the
- * sign-in guard below: the file's name is random and changes with every
- * upload, so the address itself is the permission, as a share code is, and
- * the shared quiz's page can show the cover to respondents with no account.
- */
 quizzes.get('/:id/image/:file', async (c) => {
   const file = c.req.param('file')
   const id = Number(c.req.param('id'))
@@ -58,9 +52,6 @@ quizzes.get('/:id/image/:file', async (c) => {
 
 quizzes.use('*', requireUser)
 
-// Each account may ask the AI for a draft, a chat edit or a note sixty times
-// an hour: far above a teacher's use, and a bound on what one account can
-// take from the quota every account shares.
 const aiAsks = new Map<string, number[]>()
 function aiBudget(c: { get(key: 'user'): User }) {
   if (!within(aiAsks, `u${c.get('user').id}`, 60))
@@ -75,10 +66,6 @@ async function message(c: { req: { json: () => Promise<any> } }, field: string) 
   return { text, ids }
 }
 
-/**
- * The quiz's material, once every file of it has been read: reads still
- * running (a file sent seconds after it was picked) are waited for here.
- */
 async function material(quizId: number) {
   const pending = (await loadSources(quizId)).filter((s) => s.status === 'reading')
   if (pending.length) await whenRead(pending.map((s) => s.id))
@@ -120,12 +107,6 @@ quizzes.get('/', async (c) => {
   })
 })
 
-/**
- * Starts a quiz from the home prompt box: the request is saved, the files it
- * already uploaded join the quiz, and the quiz's id comes back at once, so
- * the builder can open and show the AI working (`POST /:id/draft`) instead of
- * a spinner on the home page.
- */
 quizzes.post('/', async (c) => {
   const user = c.get('user')
   const { text, ids } = await message(c, 'prompt')
@@ -138,6 +119,15 @@ quizzes.post('/', async (c) => {
   const attached = await attachSources(id, user.id, ids)
   await addMessage(id, 'user', text || 'Make a quiz from this material.', attached.length ? { files: names(attached) } : null)
   return c.json({ id }, 201)
+})
+
+// A blank quiz: no request and no material, so the builder opens empty and drafts nothing.
+quizzes.post('/blank', async (c) => {
+  const user = c.get('user')
+  const r = await DB.Insert.into('quizzes')
+    .values({ userId: user.id, title: 'Untitled quiz', shareCode: await newShareCode(), prompt: null })
+    .run()
+  return c.json({ id: Number(r.lastInsertRowid) }, 201)
 })
 
 quizzes.get('/:id', async (c) => {
@@ -171,10 +161,6 @@ quizzes.post('/:id/draft', async (c) => {
   })
 })
 
-/**
- * A chat message: new files are added to the material, and the AI edits the
- * quiz with operations (or drafts it, if there is nothing yet).
- */
 quizzes.post('/:id/chat', async (c) => {
   aiBudget(c)
   const quiz = await ownQuiz(Number(c.req.param('id')), c.get('user').id)
@@ -196,8 +182,6 @@ quizzes.post('/:id/chat', async (c) => {
       return c.json(await fullQuiz(id))
     }
 
-    // Each question keeps its row's id through the edit, so its answers stay
-    // with it; the AI sees the questions without the ids.
     const before: Saving[] = current.questions.map(({ check: _check, file: _file, ...q }) => q)
     const { data, ms, model } = await refineQuiz(
       text || 'Use the new material too.',
@@ -248,12 +232,6 @@ const LIMITS = {
 /** The site's address, for links in email: PUBLIC_URL in production, else the address the request came to. */
 const siteOf = (c: Context) => (process.env.PUBLIC_URL ?? new URL(c.req.url).origin).replace(/\/$/, '')
 
-/**
- * Emails everyone who finished the quiz, left an address to be told of its
- * results, and has not been told yet; each address once, however many
- * attempts carry it. Answers how many addresses were told and how many
- * could not be (those stay untold, so the next release tries them again).
- */
 async function tellWaiting(quiz: any, site: string) {
   const rows = await DB.from('responses').where('responses.quizId', quiz.id).and('responses.notifiedAt', null).array()
   const waiting = rows.filter((r: any) => r.status === 'finished' && typeof r.notifyEmail === 'string' && r.notifyEmail.trim())
@@ -276,12 +254,6 @@ async function tellWaiting(quiz: any, site: string) {
   return { told, failed: outcome.size - told }
 }
 
-/**
- * Publish, unpublish, archive or restore, and every field of the Settings
- * page. Only the fields present change. Turning `showResults` on releases
- * the results (as `POST /:id/release` does) and the reply carries `told`;
- * turning it off holds them again, from everyone, until the next release.
- */
 quizzes.patch('/:id', async (c) => {
   const quiz = await ownQuiz(Number(c.req.param('id')), c.get('user').id)
   const body = await c.req.json().catch(() => ({}))
@@ -350,13 +322,6 @@ quizzes.patch('/:id', async (c) => {
     const any = await DB.from('questions').where('questions.quizId', quiz.id).exists()
     if (!any) throw new HTTPException(400, { message: 'Add at least one question before sharing the quiz.' })
   }
-  // Closing the link (stop sharing, or archiving a shared quiz) pauses every
-  // open attempt's overall clock: the attempt is marked with the moment, and
-  // the deadline (start plus limit, see routes/public.ts) stands still while
-  // the mark is set. Opening it again (sharing, or restoring) moves each
-  // paused attempt's start forward by the span it waited and clears the
-  // mark, so no time is lost to the pause. Attempts of a quiz without an
-  // overall limit carry the mark too; it changes nothing there.
   const wasOpen = quiz.status === 'published' && !Number(quiz.archived)
   const willOpen = (set.status ?? quiz.status) === 'published' && !(set.archived ?? !!Number(quiz.archived))
   if (wasOpen && !willOpen)
@@ -388,11 +353,6 @@ quizzes.patch('/:id', async (c) => {
   return c.json({ ...(await fullQuiz(Number(quiz.id))), ...(release ? { told } : {}) })
 })
 
-/**
- * The quiz's cover: one image, shown instead of its icon on the home cards,
- * the overview and the shared quiz's page. A new upload replaces the old
- * file. Multipart, the image in `file`.
- */
 quizzes.post('/:id/image', async (c) => {
   const quiz = await ownQuiz(Number(c.req.param('id')), c.get('user').id)
   const id = Number(quiz.id)
@@ -426,11 +386,6 @@ quizzes.delete('/:id/image', async (c) => {
   return c.json(await fullQuiz(Number(quiz.id)))
 })
 
-/**
- * Releases held-back results: respondents can see their scores and the
- * answers from now on, and everyone who left an email is told.
- * Answers `{ releasedAt, told, failed }`.
- */
 quizzes.post('/:id/release', async (c) => {
   const quiz = await ownQuiz(Number(c.req.param('id')), c.get('user').id)
   const at = now()
@@ -449,11 +404,6 @@ quizzes.delete('/:id', async (c) => {
 
 // ---- the overview ---------------------------------------------------------------
 
-/**
- * The numbers behind a quiz's overview page: views, takers, the average, when
- * the responses came in, the questions most often missed, the latest
- * responses, and the shape of the quiz (kinds, Bloom levels, topics).
- */
 quizzes.get('/:id/overview', async (c) => {
   const quiz = await ownQuiz(Number(c.req.param('id')), c.get('user').id)
   const id = Number(quiz.id)
@@ -487,9 +437,6 @@ quizzes.get('/:id/overview', async (c) => {
   return c.json({
     quiz: full.quiz,
     results: {
-      // Held: respondents see neither their score nor the answers yet. Nothing
-      // is held until someone has finished, so a quiz with the switch off and
-      // no respondents (a fresh copy, say) has no results to release.
       held: !full.quiz.showResults && full.quiz.resultsReleasedAt == null && finished.length > 0,
       releasedAt: full.quiz.resultsReleasedAt,
       // Finished respondents who left an email and have not been told.
@@ -528,9 +475,6 @@ quizzes.get('/:id/overview', async (c) => {
     sources: full.sources,
     insight: quiz.insight ?? null,
     insightAt: quiz.insightAt == null ? null : Number(quiz.insightAt),
-    // Reports from respondents, newest first. `question` is the reported
-    // question's number in the quiz's current order, or null when the report
-    // named none or the question has since been deleted.
     reports: (await DB.from('reports').where('reports.quizId', id).orderBy('reports.id', 'DESC').array()).map((r: any) => {
       const at = r.questionId == null ? -1 : full.questions.findIndex((q) => q.id === Number(r.questionId))
       return {
@@ -544,11 +488,6 @@ quizzes.get('/:id/overview', async (c) => {
   })
 })
 
-/**
- * How many essays wait for the maker's score in each of the given responses
- * (only those with any). A score the maker gave ends the wait whatever the
- * flag says, so an answer overridden before the flag was cleared is scored.
- */
 async function pendingByResponse(responseIds: number[]) {
   const wanted = new Set(responseIds)
   const rows = await DB.from('answers')
@@ -571,13 +510,6 @@ async function answersOf(responseIds: number[]): Promise<any[]> {
   return rows
 }
 
-/**
- * "What to teach again": the AI reads the questions people missed, with
- * anonymous counts (never a name), and writes a short note for the teacher
- * that cites them by number (ai/quiz.ts, `teachAgainNote`). An essay still
- * waiting for the maker's score is neither right nor wrong and is left out
- * of the counts, as the overview leaves it out.
- */
 quizzes.post('/:id/insight', async (c) => {
   aiBudget(c)
   const quiz = await ownQuiz(Number(c.req.param('id')), c.get('user').id)
@@ -607,10 +539,6 @@ quizzes.post('/:id/insight', async (c) => {
   return c.json({ insight: data.note, insightAt: at })
 })
 
-/**
- * A copy of the quiz: its questions, material and settings (the cover
- * included), as a new draft. Responses and a release do not come along.
- */
 quizzes.post('/:id/duplicate', async (c) => {
   const user = c.get('user')
   const quiz = await ownQuiz(Number(c.req.param('id')), user.id)
@@ -696,9 +624,6 @@ quizzes.get('/:id/responses', async (c) => {
       status: r.status,
       score: Number(r.score),
       total: Number(r.total),
-      // The start of the attempt less any time it spent paused while the quiz
-      // was not shared (the status change above moves it), so it is the
-      // clock the time limit runs on, not the moment the respondent began.
       createdAt: Number(r.createdAt),
       finishedAt: r.finishedAt == null ? null : Number(r.finishedAt),
       rating: r.rating == null ? null : Number(r.rating),
@@ -710,8 +635,6 @@ quizzes.get('/:id/responses', async (c) => {
 /** A CSV cell: quoted when it holds a comma, a quote or a line break, the quotes doubled. */
 const cell = (v: unknown) => {
   let s = v == null ? '' : String(v)
-  // A name typed as "=HYPERLINK(...)" would run as a formula in the maker's
-  // spreadsheet; a leading apostrophe makes the cell text.
   if (typeof v === 'string' && /^[=+\-@\t\r]/.test(s)) s = `'${s}`
   return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
 }
@@ -724,13 +647,6 @@ function localIso(seconds: number | null) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
 }
 
-/**
- * The quiz's responses as a CSV for a spreadsheet (the DepEd e-Class Record
- * is filled by hand otherwise): a row per respondent in name order, a column
- * per question with the points that answer earned, and two header rows, the
- * second holding each question's prompt cut to 60 characters. A UTF-8 BOM in
- * front, so Excel reads the file as UTF-8 rather than the system code page.
- */
 quizzes.get('/:id/responses.csv', async (c) => {
   const quiz = await ownQuiz(Number(c.req.param('id')), c.get('user').id)
   const id = Number(quiz.id)
@@ -793,14 +709,6 @@ async function ownResponse(quizId: number, rid: number) {
   return r
 }
 
-/**
- * One response with every answer and its verdict, for the review screen.
- * A shuffled paper comes back as it was served: the questions in the order
- * shown, and for each, `order` (the original option indices in the order
- * shown, so the letters match the respondent's) and `key` (the correct
- * answer's letter as shown). A question the layout does not name goes at
- * the end, in the quiz's order. `choice` stays an original index.
- */
 quizzes.get('/:id/responses/:rid', async (c) => {
   const quiz = await ownQuiz(Number(c.req.param('id')), c.get('user').id)
   const r = await ownResponse(Number(quiz.id), Number(c.req.param('rid')))
@@ -848,8 +756,6 @@ quizzes.get('/:id/responses/:rid', async (c) => {
               verdict: a.verdict ?? null,
               byAi: !!Number(a.byAi),
               overridden: !!Number(a.overridden),
-              // An essay waiting for the maker's score (essay checking is off); a
-              // score the maker gave ends the wait.
               pending: !!Number(a.pending) && !Number(a.overridden),
             }
           : null,
@@ -866,10 +772,6 @@ quizzes.delete('/:id/responses/:rid', async (c) => {
   return c.json({ ok: true })
 })
 
-/**
- * The quiz maker's own score for one answer: it replaces the AI's and is
- * marked as changed, and an essay that waited for it waits no longer.
- */
 quizzes.patch('/:id/responses/:rid/answers/:aid', async (c) => {
   const quiz = await ownQuiz(Number(c.req.param('id')), c.get('user').id)
   const r = await ownResponse(Number(quiz.id), Number(c.req.param('rid')))

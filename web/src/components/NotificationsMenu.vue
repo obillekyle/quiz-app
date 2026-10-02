@@ -4,11 +4,6 @@ import { useRouter } from "vue-router"
 import Icon from "./Icon.vue"
 import { api } from "../composables/api"
 
-/**
- * The bell in the top bar: responses that finished and reports that came in
- * on the user's quizzes, newest first, with a dot while any are unread.
- * Opening it marks them read. Checked when the page loads and once a minute.
- */
 type Item = {
   id: string
   kind: "response" | "report"
@@ -62,11 +57,6 @@ function open(i: Item) {
   router.push(i.to)
 }
 
-/**
- * When an item came in, by calendar day in the browser's own zone and
- * locale: the time of day for today ("4:12 PM"), "Yesterday", then a short
- * date ("Sep 28"), with the year once it is not this one.
- */
 function when(seconds: number) {
   const at = new Date(seconds * 1000)
   const today = new Date()
@@ -229,8 +219,6 @@ li[data-unread] {
     color: var(--bad);
   }
 }
-/* The title with its time on the right, then the quiz and the detail over
-   as many as two lines. */
 .what {
   display: flex;
   flex: 1;

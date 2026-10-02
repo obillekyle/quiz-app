@@ -7,11 +7,6 @@ import { useAuth } from "../composables/auth"
 import { useAction, useFetch } from "../composables/fetch"
 import { useTheme, type Theme } from "../composables/theme"
 
-/**
- * The account's settings (Kyle, 23:55), as Material You groups: the profile,
- * the ways to sign in, the theme, the devices signed in, and deleting the
- * account.
- */
 type Account = {
   name: string
   email: string
@@ -27,8 +22,6 @@ const { data, error, loading, refresh } = useFetch<Account>("/auth/account")
 // ---- profile ----
 const name = ref("")
 watch(data, (d) => d && (name.value = d.name), { immediate: true })
-// Save shows only while the name differs from the account's; once it is
-// saved, a quiet "Saved" stands in its place for 2 s.
 const nameChanged = computed(
   () => !!data.value && name.value.trim() !== data.value.name,
 )
@@ -523,8 +516,6 @@ li {
 .danger > svg {
   color: var(--bad);
 }
-/* The consequence leads the row on its own; the section and the button
-   already name the action. */
 .what .lead {
   font-size: 15px;
   color: var(--ink);

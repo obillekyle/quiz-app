@@ -2,10 +2,6 @@ import DB from 'bakery-orm'
 import { Hono } from 'hono'
 import { requireUser, type User } from '../auth/session.ts'
 
-/**
- * Every response to the user's quizzes, for the sidebar's Responses page:
- * people still answering first, then the finished ones, newest first.
- */
 export const responses = new Hono<{ Variables: { user: User } }>()
 
 responses.use('*', requireUser)
@@ -43,12 +39,6 @@ responses.get('/', async (c) => {
   return c.json({ responses: out.slice(0, 300), quizzes: new Set(out.map((r) => r.quizId)).size })
 })
 
-/**
- * Finished responses per day for each of the user's quizzes, for the
- * sparklines on the home list: `days` counts per quiz, oldest first, the last
- * one today. Days are the browser's (`tz` is its getTimezoneOffset(), in
- * minutes), so "today" ends at the user's midnight, not the server's.
- */
 responses.get('/activity', async (c) => {
   const user = c.get('user')
   const days = Math.min(90, Math.max(7, Number(c.req.query('days')) || 30))

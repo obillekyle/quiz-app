@@ -1,8 +1,3 @@
-/*
- * Cascade layers, lowest first. A component's own (unlayered) style always
- * beats a utility attribute, whatever the selector, so `<item p="sm">` never
- * fights the component that styles `item`.
- */
 @layer tokens, base, utilities;
 
 @import "./styles/tokens.css";
@@ -14,11 +9,6 @@
   *::after {
     box-sizing: border-box;
   }
-
-  /* The document itself never scrolls inside the app: AppLayout's content
-     column does, and keeps its own scrollbar gutter. A gutter reserved on
-     the document showed as an empty strip on every page that scrolls in a
-     column of its own (the builder, the overview). */
 
   body {
     margin: 0;
@@ -36,16 +26,11 @@
     font-family: var(--font-heading);
   }
 
-  /* Thin scrollbars in the page's own grays: a split view scrolls in two
-     places, and the system's wide bars stood out in both. */
   * {
     scrollbar-width: thin;
     scrollbar-color: color-mix(in srgb, var(--ink) 22%, transparent) transparent;
   }
 
-  /* One rule for every animation and transition in the app: a person who
-     asked for less motion gets none, whichever component drew it. Important
-     inside a layer outranks the components' own unlayered rules. */
   @media (prefers-reduced-motion: reduce) {
     *,
     *::before,
@@ -59,12 +44,6 @@
     }
   }
 
-  /*
-   * A page loading, drawn in the shape of what is coming: `<div skeleton>`
-   * blocks laid out like the rows or cards they stand in for, a slow light
-   * passing over them. Hidden from assistive tech; the page's own status
-   * line says it is loading.
-   */
   [skeleton] {
     display: block;
     border-radius: var(--radius-md);
@@ -92,11 +71,6 @@
   }
 }
 
-/*
- * Buttons and fields, in the same attribute style as the utilities:
- * `<button btn="primary">`, `<RouterLink btn="quiet">`, `<input field>`.
- * In `base`, so a component's own style still wins.
- */
 @layer base {
   [btn] {
     display: inline-flex;
@@ -150,11 +124,6 @@
     background: transparent;
   }
 
-  /*
-   * Selects draw Material's expand-more arrow (the set the app's icons come
-   * from) instead of the browser's own glyph. A background image cannot take
-   * currentColor, so the arrow is the ink at 65% in each theme.
-   */
   select {
     appearance: none;
     padding-right: 34px;
@@ -167,12 +136,6 @@
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23a8a8a8' d='M12 14.95q-.2 0-.375-.062t-.325-.213l-4.6-4.6q-.275-.275-.275-.7t.275-.7t.7-.275t.7.275l3.9 3.9l3.9-3.9q.275-.275.7-.275t.7.275t.275.7t-.275.7l-4.6 4.6q-.15.15-.325.213T12 14.95'/%3E%3C/svg%3E");
   }
 
-  /*
-   * A stacked list (Kyle, 23:30): one group whose outer corners are 20px and
-   * clip what is inside, its items separate tiles 4px apart with 6px
-   * corners, the page showing between them. `<ul stack>`; each child is a
-   * tile.
-   */
   [stack] {
     display: flex;
     flex-direction: column;
@@ -180,8 +143,6 @@
     margin: 0;
     padding: 0;
     border-radius: var(--radius-2xl);
-    /* Paint containment clips to the rounded box, as overflow: hidden
-       would, and keeps the list's layout to itself. */
     contain: content;
     list-style: none;
 

@@ -13,9 +13,6 @@ export const auth = new Hono()
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const field = (v: unknown) => (typeof v === 'string' ? v.trim() : '')
 
-// A code per address has its own limits (auth/codes.ts). These bound one
-// sender asking for codes to many addresses, which would spend the mailbox's
-// daily sends, and password guesses, each of which costs a slow hash.
 const codesFrom = new Map<string, number[]>()
 const codesToday = new Map<string, number[]>()
 const triesFrom = new Map<string, number[]>()
@@ -24,12 +21,6 @@ const busy = (message: string) => ({ error: message })
 
 // ---- a code by email: one step that signs in an account or starts one ------------
 
-/**
- * Emails a six-digit code. The same answer comes back whether or not the
- * address has an account, since the code itself is what proves the inbox.
- * `via` says whether it went by mail or, on a development server without
- * mail set up, only to the server's log.
- */
 auth.post('/code', async (c) => {
   const body = await c.req.json().catch(() => ({}))
   const email = field(body.email).toLowerCase()
@@ -120,10 +111,6 @@ auth.post('/devices/sign-out', requireUser, async (c) => {
   return c.json({ ended })
 })
 
-/**
- * Deletes the account and everything in it: quizzes, their files, every
- * response, sessions. The email must be typed back, so it is not one click.
- */
 auth.delete('/account', requireUser, async (c) => {
   const user = c.get('user')
   const body = await c.req.json().catch(() => ({}))
@@ -151,13 +138,6 @@ auth.patch('/me', requireUser, async (c) => {
   return c.json({ user: { ...user, name } })
 })
 
-// There is no route that makes an account from a name, an email and a
-// password alone. One existed, unused by the web app, and let anyone create
-// an account for an address they do not own: its password kept working after
-// the address's real owner later signed in by code or Google and landed in
-// the same account. An account starts with a code sent to its inbox, or with
-// Google; a password is added in Settings by someone already signed in.
-
 auth.post('/login', async (c) => {
   const body = await c.req.json().catch(() => ({}))
   const email = field(body.email).toLowerCase()
@@ -166,11 +146,7 @@ auth.post('/login', async (c) => {
     return c.json(busy('Too many sign-in tries in the last hour. Try again later, or sign in with a code.'), 429)
 
   const user = email ? await DB.from('users').where('users.email', email).fetch() : null
-  // An account made with Google has no password: it checks against the decoy
-  // and fails like any wrong password.
   const ok = await verifyPassword(password, user?.passwordHash ? String(user.passwordHash) : DECOY_HASH)
-  // One message for both cases, so the form does not tell a stranger which
-  // emails have accounts.
   if (!user || !ok) return c.json({ error: 'The email or password is incorrect.' }, 401)
 
   await startSession(c, Number(user.id))
@@ -190,17 +166,12 @@ auth.get('/me', async (c) => c.json({ user: await currentUser(c) }))
 const PENDING = 'qa_google'
 
 /** Where to land after signing in: a path of ours, or the app. */
-// One slash, then only characters a path of this app uses: a backslash or a
-// tab after the slash ("/\\evil.com") is read by browsers as "//evil.com".
 const safeNext = (n: string | undefined) => (n && /^\/(?![/\\])[\w\-./?=&%~+:@,;]*$/.test(n) ? n : '/app')
 
 /** Sends the browser to Google's account chooser. */
 auth.get('/google', (c) => {
   if (!googleConfigured()) return c.redirect('/login?error=google-off')
   const { state, verifier, challenge } = startRequest()
-  // What the callback needs to finish this sign-in, for ten minutes and for
-  // this browser only. SameSite=Lax still sends it on Google's redirect back,
-  // which is a top-level navigation.
   setCookie(c, PENDING, JSON.stringify({ state, verifier, next: safeNext(c.req.query('next')) }), {
     httpOnly: true,
     sameSite: 'Lax',
@@ -211,10 +182,6 @@ auth.get('/google', (c) => {
   return c.redirect(authorizeUrl(c, state, challenge))
 })
 
-/**
- * Google sends the browser back here. Every failure goes to the sign-in page
- * with a reason the page knows how to word; details go to the server log.
- */
 auth.get('/google/callback', async (c) => {
   let pending: { state: string; verifier: string; next: string } | null = null
   try {
@@ -240,8 +207,6 @@ auth.get('/google/callback', async (c) => {
   }
   if (!profile.email || !profile.emailVerified) return fail('google-unverified')
 
-  // One person, three ways in: already linked; an email account with the same
-  // verified address (linked now, so both ways reach one account); or new.
   let user = await DB.from('users').where('users.googleId', profile.sub).fetch()
   if (!user) {
     user = await DB.from('users').where('users.email', profile.email).fetch()

@@ -2,14 +2,6 @@ import type { ItemSet, QuestionDraft } from '../ai/quiz.ts'
 import { layout, letters, type Entry } from './crossword.ts'
 import { normalizeAnswer, type Graded } from './grade.ts'
 
-/*
- * Identification questions answered as a set: from a word bank, or written
- * into a crossword. A set is not a row of its own; its members each carry
- * the same `itemSet`, and what a respondent is shown is worked out here from
- * the members' first accepted answers, so the bank and the grid can never
- * disagree with the key.
- */
-
 type Member = QuestionDraft & { id: number }
 export type Placed = Omit<Entry, 'index'>
 export type ShownSet = { key: string; style: ItemSet['style']; title: string; words: string[]; rows: number; cols: number }
@@ -52,10 +44,6 @@ export function setsOf(questions: Member[]) {
   return { sets, entries, member }
 }
 
-/**
- * An answer inside a set is exact and never goes to the AI: the bank's words
- * were given, and a crossword's letters either fit or do not.
- */
 export function gradeInSet(q: QuestionDraft, style: ItemSet['style'], text: string): Graded {
   const fold = style === 'crossword' ? letters : normalizeAnswer
   const given = fold(text)

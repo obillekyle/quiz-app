@@ -2,13 +2,6 @@ import { createHash, randomBytes, randomInt, timingSafeEqual } from 'node:crypto
 import DB from 'bakery-orm'
 import { HTTPException } from 'hono/http-exception'
 
-/*
- * Sign-in codes: six digits sent to an email address, proving the person
- * holds that inbox. Only a salted hash is stored. A code works for ten
- * minutes and five tries, a newer code replaces an older one, and an address
- * gets one code per 30 seconds and five per hour, so the inbox cannot be
- * flooded and the six digits cannot be guessed through the form.
- */
 const LIFE = 10 * 60
 const GAP = 30
 const PER_HOUR = 5

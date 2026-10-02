@@ -1,14 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { layout, letters, type Layout } from './quiz/crossword.ts'
 
-/*
- * The crossword's promises, checked on the layout alone: the grid is rebuilt
- * from the entries here, the way the page and the printed sheet rebuild it,
- * so a fault in the placement shows up as a cell that two words disagree on
- * or as two words that touch without sharing a word. Run with `bun test`
- * from server/.
- */
-
 const METALS = ['MERCURY', 'COPPER', 'ALLOY', 'BRASS', 'DUCTILE', 'LUSTER', 'ZINC']
 
 type Filled = { ch: string; across: number[]; down: number[] }
@@ -80,8 +72,6 @@ describe('a crossword from a list of answers', () => {
   })
 
   test('no two words touch side by side or end to end', () => {
-    // Two filled cells that touch belong to one word: side by side on the
-    // same across word, or one above the other on the same down word.
     const loose: string[] = []
     for (const [at, cell] of cells) {
       const [row, col] = at.split(',').map(Number) as [number, number]

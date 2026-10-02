@@ -1,11 +1,6 @@
 import { api } from "./api"
 import type { Kind } from "./quizzes"
 
-/*
- * The respondent's side of a shared quiz (`/q/:code`): the types the public
- * routes answer with, and the attempt this browser holds.
- */
-
 /** A question as a respondent sees it before answering: no answer, no reasons, no quote. */
 /** A picture's source, shown under it: a Commons picture names its author and license. */
 export type Credit = {
@@ -77,10 +72,6 @@ export type PublicQuiz = {
     showHints: boolean
     aiCheck: boolean
     aiEssay: boolean
-    /**
-     * When an answer is checked: "each" as it is confirmed, locked from then
-     * on; "end" when the quiz is finished, changeable until then.
-     */
     feedback: "each" | "end"
   }
   questions: PublicQuestion[]
@@ -123,10 +114,6 @@ export type Saved = {
   text: string | null
 }
 
-/**
- * An answer on a quiz checked at the end, while the attempt is open: what
- * was chosen or typed, saved and still changeable, with nothing judged.
- */
 export type Picked = {
   questionId: number
   skipped?: false
@@ -142,18 +129,8 @@ export type Given = Feedback | Saved | Picked
 /** What a respondent has chosen or typed for a question, before it is sent. */
 export type Draft = { choice?: number; text?: string }
 
-/**
- * The order an attempt is shown in: question ids, and for a question whose
- * options are shuffled, the original option indices in the order shown. The
- * page sends original indices back, so grading never sees the shuffle.
- */
 export type Layout = { order: number[]; options: Record<string, number[]> }
 
-/**
- * The study note on a finished attempt: one sentence on what went right,
- * then up to three topics to go over, each with the questions it rests on
- * and, when the question has a source, where in the material to look.
- */
 export type Advice = {
   strengths: string
   review: { topic: string; why: string; where: string | null }[]
@@ -181,8 +158,6 @@ export type Attempt = Layout & {
 /** An attempt this browser started: its id and the token that proves it. */
 export type Held = { attempt: number; token: string }
 
-// localStorage can refuse (a private window in some browsers, storage full).
-// An attempt that cannot be saved still works; it only cannot resume.
 function read(key: string) {
   try {
     return localStorage.getItem(key)
@@ -213,21 +188,10 @@ export const holdAttempt = (code: string, held: Held) =>
   write(attemptKey(code), JSON.stringify(held))
 export const dropAttempt = (code: string) => write(attemptKey(code), null)
 
-/*
- * A finished quiz, remembered apart from its attempt: on a quiz that allows
- * one attempt, a revisit shows that it was taken even when the attempt
- * itself is gone (deleted by the quiz maker, or its key cleared).
- */
 const doneKey = (code: string) => `qa_done_${code}`
 export const markDone = (code: string) => write(doneKey(code), "1")
 export const wasDone = (code: string) => read(doneKey(code)) === "1"
 
-/*
- * Where a per-question clock stands: the question on screen and when it
- * appeared. A reload resumes that question with the time it had left, and
- * questions passed before it stay passed, rather than a refresh restarting
- * the clock.
- */
 export type Pace = { attempt: number; q: number; at: number }
 const paceKey = (code: string) => `qa_pace_${code}`
 export function readPace(code: string): Pace | null {
@@ -247,13 +211,6 @@ export const savePace = (code: string, pace: Pace) =>
   write(paceKey(code), JSON.stringify(pace))
 export const dropPace = (code: string) => write(paceKey(code), null)
 
-/*
- * Views count visits. A visit is counted once, when the page opens (or, for a
- * retake, when the attempt starts), and ends when its attempt is finished;
- * a refresh in between counts nothing. So a quiz's views never fall below
- * its attempts, whether one person retakes it or a class shares one
- * computer.
- */
 const visitKey = (code: string) => `qa_seen_${code}`
 /** True when this visit has not been counted yet; marks it counted. */
 export function countVisit(code: string) {
@@ -289,11 +246,6 @@ export const takeApi = {
       body:
         questionId == null ? { reason, note } : { reason, note, questionId },
     }),
-  /**
-   * While the results are held, the reply carries no score. On a quiz
-   * checked at the end, with the results shown, it carries every question's
-   * feedback too.
-   */
   finish: (h: Held, rating?: number) =>
     api<
       | {
@@ -308,11 +260,6 @@ export const takeApi = {
       body: rating ? { rating } : {},
       headers: { "x-attempt-token": h.token },
     }),
-  /**
-   * The study note for a finished attempt whose results show. The first
-   * request has the AI write it (several seconds); every later one gets the
-   * stored note back.
-   */
   advice: (h: Held) =>
     api<{ advice: Advice }>(`/attempts/${h.attempt}/advice`, {
       body: {},

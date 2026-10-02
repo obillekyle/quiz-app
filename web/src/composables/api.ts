@@ -10,14 +10,6 @@ export class ApiError extends Error {
   }
 }
 
-/**
- * Calls the server under `/api` and returns its JSON. A body makes it a POST.
- *
- * Every failure throws an ApiError whose message can be shown as it is: the
- * server writes its errors for people, and a network failure gets one here.
- * The session cookie travels on its own (same origin); `headers` carries
- * anything else, such as a respondent's attempt token.
- */
 export async function api<T>(
   path: string,
   init: {
@@ -26,8 +18,6 @@ export async function api<T>(
     headers?: Record<string, string>
   } = {},
 ): Promise<T> {
-  // A FormData body (file uploads) goes as multipart, with the browser
-  // setting its boundary; anything else goes as JSON.
   const form = init.body instanceof FormData
   let res: Response
   try {

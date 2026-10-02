@@ -5,19 +5,6 @@ import { HTTPException } from 'hono/http-exception'
 import { generate, S, type Part } from '../ai/gemini.ts'
 import type { Source } from './sources.ts'
 
-/*
- * A question's illustration, from one of three places: a file the teacher
- * uploads, a figure cropped out of the module the quiz was made from, or a
- * picture on Wikimedia Commons (Kyle's choice, 23:45: the free tier gives
- * Gemini's image models no quota, 429 on the first request of all three).
- *
- * Every illustration is a copy under data/illustrations with a random name,
- * so the same file serves the builder, the respondent's page and the printed
- * test, and a Commons picture stays even if its page changes. A Commons
- * picture carries its author and license, which CC BY and CC BY-SA require
- * wherever it is shown.
- */
-
 const DIR = join(process.cwd(), 'data', 'illustrations')
 export const NAME = /^[a-f0-9]{24}\.(jpg|png|webp)$/
 const MAX_BYTES = 5 * 1024 * 1024
@@ -97,10 +84,6 @@ export async function fromUpload(f: File): Promise<Illustration> {
 
 const canvas = () => import('@napi-rs/canvas')
 
-/**
- * One page of a source as a picture: a PDF page drawn at twice its size (a
- * 3-page module draws in about a second a page), or the photo itself.
- */
 async function pagePicture(source: Source, page: number): Promise<Buffer | null> {
   const bytes = new Uint8Array(await readFile(source.path))
   if (source.mime === 'application/pdf') {
@@ -175,11 +158,6 @@ function pageOf(q: Asked, sources: Source[]) {
   return { source, page: q.page }
 }
 
-/**
- * The AI's search with the answer's words taken out, however it was asked:
- * "liquid mercury metal" for "which metal is liquid at room temperature"
- * would put the answer on the picture. What is left falls back to the topic.
- */
 function safeSearch(search: string, q: Asked) {
   const answer = (q.answer ?? '').toLowerCase()
   const words = search
@@ -240,11 +218,6 @@ function toCandidate(page: any): Candidate | null {
 
 const INFO = { prop: 'imageinfo', iiprop: 'url|mime|extmetadata', iiurlwidth: '800' }
 
-/**
- * Pictures for a search: first the lead pictures of the Wikipedia articles it
- * finds (freely licensed only, so every one is on Commons), then Commons' own
- * search. At most `limit`, no file twice.
- */
 async function commons(term: string, limit = 6): Promise<Candidate[]> {
   const out: Candidate[] = []
   const seen = new Set<string>()
@@ -276,11 +249,6 @@ async function commons(term: string, limit = 6): Promise<Candidate[]> {
 
 // ---- finding and attaching ------------------------------------------------------------
 
-/**
- * Candidates for one question: figures cropped from the page its quote is on,
- * then Commons pictures for a search the AI names. One AI call; the crops are
- * saved as they are made, so attaching one is only a matter of naming it.
- */
 export async function find(q: Asked, sources: Source[]) {
   const started = performance.now()
   const where = pageOf(q, sources)

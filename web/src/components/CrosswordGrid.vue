@@ -1,20 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue"
 
-/**
- * A crossword's grid, for looking at: one square per cell that belongs to a
- * word, each word's number in the corner of its first cell, and whatever
- * has been typed for a word so far, a character a cell. It takes no input
- * itself; the page that owns the answers passes them in as `text`.
- *
- * Cells that belong to no word are not drawn at all. A classic grid blacks
- * them out, and a layout made from a handful of answers is mostly such
- * cells: on paper that is a page of solid ink for nothing.
- *
- * One inline svg in cell units, so a wide grid shrinks to its container and
- * a small one stops at 40 px a cell. The strokes do not scale with it: a
- * line stays a line at any width.
- */
 const props = defineProps<{
   rows: number
   cols: number
@@ -34,12 +20,6 @@ const CELL = 40
 /* Room for the outer strokes, half of which fall outside the cells. */
 const PAD = 1
 
-/**
- * What a cell can hold. Mirrors `letters()` in server/src/quiz/crossword.ts,
- * the rule the layout was made by: uppercase, accents folded, A to Z and 0
- * to 9 only. The two have to agree, or a typed answer would land in
- * different cells here than the ones the server counted for it.
- */
 function fold(s: string) {
   return s
     .normalize("NFD")
@@ -82,8 +62,6 @@ const cells = computed(() => {
       }
       if (i === 0) cell.number = e.number
       if (e.active) cell.active = true
-      // Where two words cross and disagree, the one being typed shows;
-      // with neither active, the later one does.
       const ch = typed[i]
       if (ch && (e.active || !cell.held)) {
         cell.ch = ch
@@ -91,8 +69,6 @@ const cells = computed(() => {
       }
     }
   }
-  // The active word is drawn last, so its heavier border lies over the
-  // lines of the cells beside it.
   return [...map.values()].sort((a, b) => Number(a.active) - Number(b.active))
 })
 
@@ -138,7 +114,7 @@ const label = computed(() => {
 
   rect {
     fill: var(--surface);
-    stroke: var(--line);
+    stroke: color-mix(in srgb, var(--ink) 38%, var(--surface));
     stroke-width: 1px;
     vector-effect: non-scaling-stroke;
   }
@@ -158,8 +134,6 @@ const label = computed(() => {
     fill: var(--ink);
   }
 
-  /* Paper: black hairlines on white and nothing tinted, whichever word was
-     active when the sheet was made. */
   &[data-print] {
     rect,
     [data-active] rect {
@@ -174,8 +148,6 @@ const label = computed(() => {
   }
 }
 
-/* The same for a page printed straight from the browser, where the tokens
-   turn black and the tint would come out gray. */
 @media print {
   .crossword {
     rect,

@@ -1,17 +1,5 @@
 import nodemailer, { type Transporter } from 'nodemailer'
 
-/*
- * Outgoing email: sign-in codes, and the note that a quiz's held-back
- * results are out. Sent from a Gmail account over SMTP
- * with an app password (Google Account, Security, App passwords), set as
- * MAIL_USER and MAIL_APP_PASSWORD in the server's .env.
- *
- * Without them, a development server prints each message to its log so the
- * flow can still be tried; a production server refuses instead, since a code
- * in a log file is a way into someone's account.
- */
-// EMAIL_USER and EMAIL_PASSWORD are read as well: the .env was first filled
-// with those names.
 const user = () => (process.env.MAIL_USER ?? process.env.EMAIL_USER ?? '').trim()
 // Google shows the app password in four groups of four; the spaces are not part of it.
 const pass = () => (process.env.MAIL_APP_PASSWORD ?? process.env.EMAIL_PASSWORD ?? '').replace(/\s+/g, '')
@@ -26,12 +14,6 @@ export type Sent = 'mail' | 'log'
 const escape = (s: string) =>
   s.replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]!)
 
-/**
- * The email a respondent asked for on a quiz whose results were held back:
- * the results are out, and where to see them. The result lives in the
- * browser the quiz was taken in (its attempt token is kept there), so the
- * message says to open the link in that browser.
- */
 export function resultsMail(m: { title: string; link: string; name: string }) {
   const lines = [
     `Hi ${m.name},`,

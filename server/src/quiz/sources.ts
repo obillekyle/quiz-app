@@ -14,11 +14,6 @@ const TYPES: Record<string, string> = {
   'image/heic': 'heic',
   'image/heif': 'heif',
 }
-/**
- * A PDF is read from its text layer, or sent to the AI five scanned pages at
- * a time, so its size matters little. A photo goes to the AI whole, and a
- * request to it carries 20 MB at most once encoded.
- */
 const MAX_PDF = 25 * 1024 * 1024
 const MAX_PHOTO = 10 * 1024 * 1024
 /** Uploads left in the prompt box this long without being sent are dropped. */
@@ -47,13 +42,6 @@ export function checkFile(f: File) {
   if (f.type !== 'application/pdf' && f.size > MAX_PHOTO) throw bad(`${f.name} is larger than 10 MB. Attach a smaller photo.`)
 }
 
-/**
- * A stored path as it is on this machine: what follows `data/uploads` in it,
- * under this server's own uploads folder. The database travels (written on
- * Windows in development, copied to the Linux box), and an absolute path
- * written on one names nothing on the other: on the box, duplicating a seeded
- * quiz failed and its module could not be cropped for a picture.
- */
 function here(path: string) {
   const p = path.replace(/\\/g, '/')
   const at = p.lastIndexOf('/data/uploads/')
@@ -130,12 +118,6 @@ export function allPages(sources: Source[]) {
   return sources.flatMap((s) => (hasText(s) ? s.pages! : []).map((text, i) => ({ source: s, page: i + 1, text })))
 }
 
-/**
- * The material as the AI takes it: each file's stored pages, as text. A file
- * read before transcription existed and holding no text (an early photo, or
- * a scan) goes inline instead, as it always did. A file that failed to read
- * is left out; the prompt box showed why before it was sent.
- */
 export async function materialParts(sources: Source[]): Promise<Part[]> {
   const parts: Part[] = []
   for (const s of sources) {

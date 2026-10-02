@@ -1,12 +1,3 @@
-/**
- * Sample quizzes for one account, so the home screen has something to show
- * and the demo has educational data in it.
- *
- *   bun scripts/seed.ts someone@example.com
- *
- * Adds six quizzes with their questions to that account; running it again
- * adds nothing for a title the account already has.
- */
 import { randomBytes } from 'node:crypto'
 import DB, { closeDB, initDB } from 'bakery-orm'
 

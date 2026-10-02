@@ -8,12 +8,6 @@ import { gradeChoice, gradeEssay, gradeTyped, type Graded } from '../quiz/grade.
 import { gradeInSet, setsOf } from '../quiz/sets.ts'
 import { coverUrl, fullQuiz, type Question } from '../quiz/store.ts'
 
-/**
- * The respondent's side: a shared quiz, answered with a name and no account.
- * An attempt is a `responses` row plus a random token only its browser
- * holds. Answers and explanations leave the server only after the question
- * is answered, and not even then while the quiz maker holds the results.
- */
 export const respond = new Hono()
 
 const notFound = () => new HTTPException(404, { message: 'This quiz is not shared, or the link is wrong.' })
@@ -27,11 +21,6 @@ async function sharedQuiz(code: string) {
 /** A Bool column as a boolean, with the column's default when the row predates it. */
 const flag = (v: unknown, fallback: boolean) => (v == null ? fallback : !!Number(v))
 
-/**
- * A quiz's settings as the respondent's routes apply them. A time mode with
- * no positive limit is no limit. Results are shown when the maker shows them
- * at once or has released them since.
- */
 function rulesOf(q: any) {
   const limit = Number(q.timeLimit)
   const timed = (q.timeMode === 'question' || q.timeMode === 'overall') && Number.isInteger(limit) && limit > 0
@@ -45,8 +34,6 @@ function rulesOf(q: any) {
     // Off, the question's "Show hint" (its topic and page) is not offered.
     hints: flag(q.showHints, true),
     ai: { check: flag(q.aiCheck, true), essay: flag(q.aiEssay, true) },
-    // When an answer is checked: "each" as it is confirmed, locked from then
-    // on; "end" when the attempt finishes, changeable until then.
     feedback: (q.feedback === 'end' ? 'end' : 'each') as 'each' | 'end',
   }
 }
@@ -55,8 +42,6 @@ type Rules = ReturnType<typeof rulesOf>
 /** The quiz as a respondent may see it before answering: no answers, no reasons, no quotes. */
 respond.get('/q/:code', async (c) => {
   const q = await sharedQuiz(c.req.param('code'))
-  // A view is one browser: the page sends `seen=1` on every load after its
-  // first, so a refresh or a resumed attempt does not count again.
   if (c.req.query('seen') !== '1')
     await DB.Update.table('quizzes').set({ views: Number(q.views ?? 0) + 1 }).where('quizzes.id', q.id).run()
   const full = await fullQuiz(Number(q.id))
@@ -92,8 +77,6 @@ respond.get('/q/:code', async (c) => {
       prompt: x.prompt,
       choices: x.choices.map((ch) => ch.text),
       points: x.points,
-      // The hint names where to look; the sentence itself comes with the feedback.
-      // With hints off, where to look is not sent at all.
       topic: rules.hints ? x.topic || null : null,
       page: rules.hints ? x.page : null,
       image: x.image ?? null,
@@ -106,11 +89,6 @@ respond.get('/q/:code', async (c) => {
   })
 })
 
-/**
- * A report from the flag on a shared quiz's pages. Anonymous; the quiz maker
- * reads it on the overview. One address may send ten an hour, which is more
- * than a person reporting needs and less than a script flooding a quiz.
- */
 const reported = new Map<string, number[]>()
 respond.post('/q/:code/reports', async (c) => {
   const q = await sharedQuiz(c.req.param('code'))
@@ -131,10 +109,6 @@ respond.post('/q/:code/reports', async (c) => {
   return c.json({ ok: true }, 201)
 })
 
-// Nobody here is signed in, so the bounds are per sender's address. A
-// school's network, or a hall where an audience scans the code, is one
-// address: each bound is set above what a few hundred people there do in an
-// hour and below what a loop left running does.
 /** Attempts started from one address. */
 const starts = new Map<string, number[]>()
 /** Typed answers and essays graded for one address; each may be an AI call. */
@@ -145,15 +119,6 @@ const MAX_CHANGES = 8
 
 // ---- the layout: the order an attempt is shown in, kept with it -------------------
 
-/**
- * How one attempt is laid out, saved on its `responses` row as it was served
- * so the quiz maker's views can show the response in its own order with its
- * own key. `questions`: question ids in the order shown. `options`: for each
- * multiple choice and true or false question, the original option indices in
- * the order shown. `key`: for the same questions, the right answer as shown,
- * the letter for multiple choice ("A" to "F") and the word for true or false.
- * Null on a quiz that shuffles nothing.
- */
 export type Layout = { questions: number[]; options: Record<string, number[]>; key: Record<string, string> }
 
 const LETTERS = 'ABCDEF'
@@ -196,12 +161,6 @@ function readLayout(v: unknown): Layout | null {
   }
 }
 
-/**
- * The order an attempt is served in, from its saved layout: a question
- * deleted since drops out, one added since goes at the end in the quiz's
- * order, unshuffled. The same goes for an edited question's options. With
- * no layout, the quiz's own order.
- */
 function servedOrder(layout: Layout | null, questions: Question[]) {
   const ids = new Set(questions.map((q) => q.id))
   const kept = (layout?.questions ?? []).filter((id) => ids.has(id))
@@ -221,22 +180,8 @@ function servedOrder(layout: Layout | null, questions: Question[]) {
 
 // ---- attempts ---------------------------------------------------------------------
 
-/**
- * An overall limit is kept here, with this much allowance for the network: an
- * answer sent in the last second still lands. A per-question limit is kept by
- * the page, which moves on at zero; a total-time ceiling here would refuse
- * honest answers, since the clock stops while a respondent reads the feedback.
- */
 const GRACE_MS = 30_000
 
-/**
- * When an attempt's overall limit runs out, in ms since the epoch; null
- * without one. An attempt whose quiz stopped being shared is paused
- * (`pausedAt`, set by the status change in routes/quizzes.ts): its clock
- * stands where it stopped, so the deadline moves with the present. Sharing
- * again moves `createdAt` forward by the paused span and clears the mark,
- * after which start plus limit is the deadline again.
- */
 const deadlineOf = (r: any, rules: Rules) => {
   if (rules.timeMode !== 'overall' || !rules.timeLimit) return null
   const paused = r.pausedAt == null ? 0 : Math.max(0, Math.floor(Date.now() / 1000) - Number(r.pausedAt))
@@ -272,8 +217,6 @@ respond.post('/q/:code/attempts', async (c) => {
       layout: layout ? JSON.stringify(layout) : null,
     })
     .run()
-  // A retake from the same browser, after a finished attempt, is a visit the
-  // page load did not count (`view`), so views never fall below attempts.
   if (body.view === true)
     await DB.Update.table('quizzes').set({ views: Number(q.views ?? 0) + 1 }).where('quizzes.id', q.id).run()
   return c.json(
@@ -287,11 +230,6 @@ respond.post('/q/:code/attempts', async (c) => {
   )
 })
 
-/**
- * The attempt, if the token is its own; a 404 otherwise, so ids reveal
- * nothing. The page sends the token in the `x-attempt-token` header, never in
- * the address, which servers and proxies write to their logs.
- */
 const tokenOf = (c: { req: { header(name: string): string | undefined } }, body?: { token?: unknown }) =>
   c.req.header('x-attempt-token') ?? body?.token
 
@@ -337,11 +275,6 @@ const saved = (q: QuestionDraft & { id: number }, a: Given) => ({
   text: a.text,
 })
 
-/**
- * An answer on a quiz checked at the end, while the attempt is open: the
- * pick as it was saved, so a reload or Back shows it chosen and still
- * changeable, and nothing about how it scored.
- */
 const pick = (q: QuestionDraft & { id: number }, a: Given) => ({
   questionId: q.id,
   pick: true as const,
@@ -361,16 +294,6 @@ const graded = (row: any): Given & Graded => ({
   pending: !!Number(row.pending) && !Number(row.overridden),
 })
 
-/**
- * Where an attempt stands, for a refresh: every answer so far with its
- * feedback, in the order the attempt is shown. Once the attempt is finished,
- * the questions it skipped come too, with their answers, so the review shows
- * the whole quiz. While the results are held, the answers carry only what
- * was given, and the score stays out. On a quiz checked at the end, an open
- * attempt's answers are picks: what was chosen or typed, nothing judged.
- * A finished attempt whose results show carries its study note, once one
- * has been written.
- */
 respond.get('/attempts/:id', async (c) => {
   const r = await ownAttempt(Number(c.req.param('id')), tokenOf(c))
   const [full, q] = await Promise.all([fullQuiz(Number(r.quizId)), quizOf(r)])
@@ -416,23 +339,11 @@ respond.get('/attempts/:id', async (c) => {
   })
 })
 
-/**
- * One answer, graded and stored. On a quiz checked as it goes ("each") it
- * is stored once: a second answer to the same question gets the first's
- * reply. On a quiz checked at the end, an open attempt's answer can be
- * replaced: a different value is graded again and takes the stored row's
- * place, the same value comes back as it was stored (no second AI call),
- * and the reply is the pick, never a verdict. Past an overall limit and its
- * grace an answer is refused, with `field: "time"` so the page knows to
- * finish.
- */
 respond.post('/attempts/:id/answers', async (c) => {
   const body = await c.req.json().catch(() => ({}))
   const r = await ownAttempt(Number(c.req.param('id')), tokenOf(c, body))
   if (r.status === 'finished') throw new HTTPException(409, { message: 'This attempt is already finished.' })
   const [full, quiz] = await Promise.all([fullQuiz(Number(r.quizId)), quizOf(r)])
-  // The page cannot load a closed quiz; a browser holding its token could
-  // still post here, so the link's state is checked on every answer.
   if (quiz.status !== 'published' || Number(quiz.archived))
     return c.json({ error: 'This quiz is closed, so this answer was not saved. Ask the quiz maker.', field: 'closed' }, 409)
   const rules = rulesOf(quiz)
@@ -456,8 +367,6 @@ respond.post('/attempts/:id/answers', async (c) => {
   if (deadline != null && Date.now() > deadline + GRACE_MS)
     return c.json({ error: 'The time for this quiz is up, so this answer was not saved.', field: 'time' }, 409)
 
-  // What is graded from here on may call the AI: bounded per answer (a pick
-  // changed again and again on a quiz checked at the end) and per address.
   if (done) {
     const key = `${r.id}:${q.id}`
     const n = (changes.get(key) ?? 0) + 1
@@ -468,8 +377,6 @@ respond.post('/attempts/:id/answers', async (c) => {
   if ((q.kind === 'identify' || q.kind === 'essay') && !within(typedFrom, addressOf(c), 2000))
     return c.json({ error: 'Too many answers were sent from here in the last hour. Try again in a few minutes.', field: 'busy' }, 429)
 
-  // In a set only when the page showed it as one: a crossword word the grid
-  // could not place is typed and checked like any other.
   const inSet = q.itemSet && setsOf(full.questions).member.has(q.id) ? q.itemSet.style : null
   const result: Graded =
     q.kind === 'choice' || q.kind === 'truefalse'
@@ -492,9 +399,6 @@ respond.post('/attempts/:id/answers', async (c) => {
     // A replaced answer starts over: a score the quiz maker gave belonged to the answer it replaces.
     await DB.Update.table('answers').set({ ...row, overridden: false }).where('answers.id', done.id).run()
   } else {
-    // Two sends of a first answer can both pass the lookup above (a double
-    // press, a retry over a slow grading); the later one replaces the row
-    // the earlier one made rather than adding a second.
     const raced = await DB.from('answers').where('answers.responseId', r.id).and('answers.questionId', q.id).fetch()
     if (raced && atEnd) await DB.Update.table('answers').set({ ...row, overridden: false }).where('answers.id', raced.id).run()
     else if (raced) return c.json(reply(graded(raced)))
@@ -503,15 +407,6 @@ respond.post('/attempts/:id/answers', async (c) => {
   return c.json(reply({ choice, text, ...result }))
 })
 
-/**
- * Finishing totals the score; a rating (1 to 5) may come with it or after.
- * It works past a time limit too: a late finish is how an attempt ends when
- * the clock runs out. While the results are held, the reply says only how
- * many were answered. On a quiz checked at the end, this is where the
- * answers are revealed: with the results shown, the reply carries every
- * question's feedback in the order the attempt was shown, the skipped ones
- * included, as the finished attempt's own state does.
- */
 respond.post('/attempts/:id/finish', async (c) => {
   const body = await c.req.json().catch(() => ({}))
   const r = await ownAttempt(Number(c.req.param('id')), tokenOf(c, body))
@@ -558,13 +453,6 @@ function readAdvice(v: unknown): StudyNote | null {
   }
 }
 
-/**
- * An attempt's questions as the note reads them, numbered in the order the
- * attempt showed them (the numbers the respondent's review carries). An
- * answer counts as right at full points, so an essay scored 4 of 5 is partly
- * right here although it passes; an essay waiting for the quiz maker's score
- * is neither right nor missed.
- */
 export function studyRows(shown: Question[], given: Map<number, any>): StudyRow[] {
   return shown.map((q, i) => {
     const row = given.get(q.id)
@@ -598,25 +486,6 @@ const NOTHING_MISSED_YET = {
 const writing = new Map<number, Promise<StudyNote>>()
 const adviceLog = new Map<string, number[]>()
 
-/**
- * "What to review": the AI's study note for one finished attempt (ai/quiz.ts,
- * `studyNote`), written on request and kept on the attempt. Only once the
- * respondent can see the results; while the quiz maker holds them, a note
- * would give them away.
- *
- * The cost is bounded at one AI call per attempt, ever: a stored note is
- * returned as it is, and two requests at once share one call. An attempt
- * with nothing missed gets a fixed sentence and no call. That sentence is
- * stored too, unless an essay still waits for the quiz maker's score: its
- * score may yet give the note something to say. A failed call stores
- * nothing, so the respondent can ask again. Sixty calls an hour from one
- * address, the allowance the results email below has: a class on one school
- * network asks within minutes of each other.
- *
- * The AI is sent the quiz's title and language, the score and each
- * question's outcome. The name, the section and the answers themselves stay
- * here.
- */
 respond.post('/attempts/:id/advice', async (c) => {
   const body = await c.req.json().catch(() => ({}))
   const r = await ownAttempt(Number(c.req.param('id')), tokenOf(c, body))
@@ -657,13 +526,6 @@ respond.post('/attempts/:id/advice', async (c) => {
   return c.json({ advice: await job })
 })
 
-/**
- * An email address to tell when the quiz maker releases the results, kept on
- * the attempt (a second one replaces the first). Only while the results are
- * held and the attempt is finished. Sixty an hour from one address: a class
- * on one school network leaves one each within minutes, and a script
- * collecting addresses gets no further than that.
- */
 const EMAIL = /^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/
 const notifyLog = new Map<string, number[]>()
 respond.post('/attempts/:id/notify', async (c) => {

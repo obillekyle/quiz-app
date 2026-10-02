@@ -1,17 +1,6 @@
 <script setup lang="ts">
 import Icon from "./Icon.vue"
 
-/**
- * A Material 3 switch: a 52 by 32 track whose handle grows and carries a
- * check when on. The button around the track is 44 px tall, so the touch
- * target is the full height whatever the track draws. A button with
- * role="switch", so a <label> around it (the whole settings row) toggles
- * it too.
- *
- * The track draws no text, so the switch is named by `labelledby` (the id of
- * the row's title) or, where there is no title element, by `label`. One of
- * the two is required: a switch with no name reads as an empty button.
- */
 const on = defineModel<boolean>({ required: true })
 defineProps<{
   disabled?: boolean
@@ -84,8 +73,6 @@ defineProps<{
   background: var(--accent);
 }
 
-/* Off: a 16 px handle in the outline color. On: 24 px, the accent's ink,
-   at the far end. Pressed, it grows to 28 px either way. */
 .handle {
   position: absolute;
   top: 50%;

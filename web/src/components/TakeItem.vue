@@ -12,22 +12,6 @@ import type {
   ShownSet,
 } from "../composables/take"
 
-/**
- * One question on the respondent's side, from the QuizApp design: the prompt
- * in its own card, the options below. Until it is checked it takes a pick
- * (an option chosen, or typed text) and offers a hint naming where in the
- * material to look. Nothing is sent from here: the pick goes up to the page,
- * whose button confirms it. Once checked, it shows the feedback: the right
- * option green, a wrong pick red, why each option is right or wrong, and
- * the sentence in the material the answer comes from.
- *
- * On a quiz checked at the end, a saved answer comes back as a pick: it
- * shows chosen and stays open to change until the attempt is finished.
- *
- * While the quiz maker holds the results, an answer is only marked as given:
- * no right or wrong, no reasons. An essay the quiz maker scores by hand
- * (essay checking off) says so until it has a score.
- */
 const props = withDefaults(
   defineProps<{
     question: PublicQuestion
@@ -174,10 +158,6 @@ watch(
   () => (hintOpen.value = false),
 )
 
-/**
- * A number and its unit kept on one line ("-38.8 °C", "29.8 %"): the AI's
- * text puts an ordinary space between them, where a line may break.
- */
 const glue = (t: string | null | undefined) =>
   (t ?? "").replace(
     /(\d)\s+(?=°|%|(?:kg|g|mg|km|cm|mm|m|mL|L|s|min|h)\b)/g,
@@ -186,12 +166,6 @@ const glue = (t: string | null | undefined) =>
 
 const points = (n: number) => `${n} ${n === 1 ? "point" : "points"}`
 
-/**
- * The feedback arrived while this question was on screen, as against a
- * question mounted already graded (the review, or Back to an answered one).
- * Only the first case is a reveal, and only a reveal animates. A pick saved
- * on a quiz checked at the end reveals nothing.
- */
 const reveal = ref(false)
 const judged = (x: Given | undefined) => !!x && !x.pick
 watch(f, (now, before) => {
@@ -283,8 +257,6 @@ watch(
             </span>
             <small v-if="g && g.reasons[c.i]">{{ glue(g.reasons[c.i]) }}</small>
           </span>
-          <!-- A radio's ring on every option and its dot on the pick: a check
-               here would read as "correct" before anything is checked. -->
           <span v-if="open" class="tick" aria-hidden="true" />
         </button>
       </li>
@@ -292,8 +264,6 @@ watch(
 
     <!-- Identification and essay: typed here, sent by the page's button. -->
     <div v-else class="typed">
-      <!-- A crossword: the whole grid with this question's squares marked,
-           filling in as the set's other questions are answered. -->
       <figure v-if="set?.style === 'crossword' && grid" class="cross">
         <figcaption>{{ set.title || "Crossword" }}</figcaption>
         <CrosswordGrid :rows="set.rows" :cols="set.cols" :entries="grid" />
@@ -529,9 +499,6 @@ watch(
   &:disabled {
     cursor: default;
   }
-  /* The pick, before it is confirmed: a 2px outline in the accent as text
-     reads it, a tint, and the radio's dot at the end. Picking again moves
-     all three. */
   &[data-state="chosen"],
   &[data-state="chosen"]:hover:not(:disabled) {
     border-color: var(--accent-text, var(--accent));
@@ -561,8 +528,6 @@ watch(
 [data-state="picked"] em {
   color: var(--accent-text, var(--accent));
 }
-/* The group clips to its own rounded box. The first and the last tile take
-   its corners, so a pick's outline runs round them rather than being cut. */
 .options > li:first-child .option {
   border-top-left-radius: var(--radius-2xl);
   border-top-right-radius: var(--radius-2xl);
@@ -816,10 +781,6 @@ watch(
   }
 }
 
-/* The reveal, in reading order: the verdict's chip, then why each option is
-   right or wrong (one after another, down the list), then the explanation,
-   then the sentence it rests on. Each rises 8px into place; a skipped
-   animation leaves the element where its own rules put it. */
 .item[data-reveal] {
   .got {
     animation: fade-in var(--fast) var(--ease) both;

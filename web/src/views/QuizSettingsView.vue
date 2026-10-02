@@ -21,13 +21,6 @@ import {
 } from "../composables/quizzes"
 import { toast } from "../composables/toast"
 
-/**
- * A quiz's Settings page, in Kyle's order: the quiz itself (name,
- * description, icon or cover, shuffling), the time limit, what respondents
- * get once they finish, the AI's checking, then archive and delete. Each
- * control saves on its own as it changes, and text when it loses focus;
- * "Saved" shows beside the control for two seconds.
- */
 const route = useRoute()
 const router = useRouter()
 const id = computed(() => Number(route.params.id))
@@ -71,10 +64,6 @@ onBeforeUnmount(() => clearTimeout(savedTimer))
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e))
 
-/**
- * Saves some fields and takes the quiz from the reply. Saves run one after
- * another, so a reply never lands after a newer one and undoes it.
- */
 function save(key: string, body: Record<string, unknown>) {
   const run = queue.then(async () => {
     delete failure[key]
@@ -85,8 +74,6 @@ function save(key: string, body: Record<string, unknown>) {
       )
       data.value = reply
       flash(key)
-      // The home cards and the sidebar show the name, the icon and the color,
-      // and the home page filters its list by the bin.
       if ("title" in body || "icon" in body || "color" in body || "bin" in body)
         refreshQuizzes()
       return reply
@@ -204,11 +191,6 @@ const fileInput = ref<HTMLInputElement>()
 const COVER_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"]
 const COVER_SIDE = 1600
 
-/**
- * A photo as it is sent: shrunk to 1600 px on its long side and re-encoded
- * as WebP, so a 4 MB phone photo leaves as a few hundred KB. A GIF goes as
- * it is (it may move), and so does a small image of an allowed type.
- */
 async function prepare(file: File): Promise<Blob> {
   if (file.type === "image/gif") return file
   let bitmap: ImageBitmap
@@ -381,8 +363,6 @@ const timeText = computed(() => {
 
 async function setMode(m: Mode) {
   if (m === mode.value) return
-  // A new mode starts from its own default: a minute per question, or half
-  // an hour for the whole quiz; the field is there to change it.
   const limit = m === "none" ? null : LIMIT[m].fallback
   local.timeMode = m
   delete failure.limit
@@ -749,9 +729,6 @@ const SWITCHES: Record<SwitchKey, { title: string; text: string }> = {
                   ><Icon name="check" :size="16" /> Saved</span
                 >
               </div>
-              <!-- Each option carries `selected` itself: the bins arrive after
-                   the quiz, and a value set on the select before its options
-                   exist would leave it on None. -->
               <select
                 id="q-bin"
                 field
@@ -1057,8 +1034,6 @@ const SWITCHES: Record<SwitchKey, { title: string; text: string }> = {
   color: var(--muted);
 }
 
-/* While the quiz loads: the heading and the first tiles, in their places.
-   Two class names on the row: the tile rule sets the column direction. */
 .tile.skel-row {
   flex-direction: row;
   align-items: center;
@@ -1072,8 +1047,6 @@ const SWITCHES: Record<SwitchKey, { title: string; text: string }> = {
   gap: 10px;
 }
 
-/* One column of sections, each a heading over a stacked list. The column
-   stops at a reading width, on the page's left edge. */
 .sections {
   display: flex;
   flex-direction: column;
@@ -1188,8 +1161,6 @@ textarea[field] {
 }
 
 /* ---- the color: the palette's six, a custom one, and the way back ---- */
-/* Seven 44px targets touch (308px), so a 390px phone keeps them on one row
-   with the discs 8px apart; the quiet button wraps under them there. */
 .swatches {
   display: flex;
   flex-wrap: wrap;

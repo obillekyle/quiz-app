@@ -1,12 +1,3 @@
-/**
- * One-off repair, 2026-10-01: text the AI wrote before answers were decoded
- * kept HTML entities ("29.8 &deg;C"), and questions saved before
- * `sourceFile` existed do not name the file their quote is in. Decodes the
- * stored strings (inside JSON columns too, parsed rather than patched) and
- * finds each grounded quote's file again. Safe to run twice.
- *
- *   bun scripts/fix-entities-files.ts
- */
 import { Database } from 'bun:sqlite'
 import { decodeEntities } from '../src/ai/gemini.ts'
 import { ground } from '../src/ai/ground.ts'

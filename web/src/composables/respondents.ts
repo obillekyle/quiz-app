@@ -1,13 +1,3 @@
-/*
- * What every page that lists respondents shares: the passing mark, how a
- * score is shown against it, and a respondent's avatar.
- *
- * These were written once per page: the passing mark as a bare 0.75 in five
- * files and the avatar palette in three. The copies agreed, and nothing
- * would have said so the day one of them changed: a respondent would have
- * been red on one page and not on the next, or a different color on each.
- */
-
 /** A score under this share of the total is marked as low: 75%, the passing mark in Philippine schools. */
 export const PASSING = 0.75
 /** The same mark as the number a label shows ("Under 75% passing"). */

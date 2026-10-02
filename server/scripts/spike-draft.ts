@@ -1,7 +1,3 @@
-/**
- * Drafts a quiz from a sample module and grounds it, to measure the AI core.
- *   bun scripts/spike-draft.ts ../samples/science7-metals.pdf "request"
- */
 import { extractText, getDocumentProxy } from 'unpdf'
 import { ground } from '../src/ai/ground.ts'
 import { draftQuiz } from '../src/ai/quiz.ts'

@@ -40,33 +40,6 @@ import {
 } from "../composables/take"
 import { initial, PASSING } from "../composables/respondents"
 
-/*
- * A shared quiz, answered with a name and no account: the respondent's side
- * of QuizApp, in the design's purple (Figma, the five phone screens of
- * `123120.png`). Intro, then the name, then one question at a time, then
- * the score, a rating, a study note written by the AI when asked for, and
- * a review.
- *
- * A tap or a typed word is a pick, and a pick sends nothing: the button
- * under the question confirms it. On a quiz checked as it goes, Check grades
- * the pick, shows the feedback and locks the answer. On a quiz checked at
- * the end, Next saves the pick and shows nothing; Back and Skip move
- * around, a saved answer can be changed, and a list of the questions comes
- * before Finish, which is where the answers are checked and shown.
- *
- * The attempt's id and token stay in this browser (localStorage), so a
- * refresh or a closed tab picks up at the first unanswered question.
- *
- * The quiz's settings shape it: the order comes from the attempt's saved
- * layout; a time limit runs a clock (per question it moves on at zero,
- * overall it finishes); one attempt per browser keeps a finished quiz
- * finished; held results replace the score with "Your answers are in" and
- * an email to tell when they are released.
- */
-
-// Material Symbols (Google, Apache 2.0), the set the app's own icons come
-// from, for the clock and the rules on the intro. Registered here rather than
-// in the app's generated set, which only this page needs them from.
 addIcon("take:timer", {
   body: '<path fill="currentColor" d="M10 3q-.425 0-.712-.288T9 2t.288-.712T10 1h4q.425 0 .713.288T15 2t-.288.713T14 3zm2.713 10.713Q13 13.425 13 13V9q0-.425-.288-.712T12 8t-.712.288T11 9v4q0 .425.288.713T12 14t.713-.288m-4.2 7.576q-1.638-.713-2.863-1.938t-1.937-2.863T3 13t.713-3.488T5.65 6.65t2.863-1.937T12 4q1.55 0 2.975.5t2.675 1.45l.7-.7q.275-.275.7-.275t.7.275t.275.7t-.275.7l-.7.7Q20 8.6 20.5 10.025T21 13q0 1.85-.713 3.488T18.35 19.35t-2.863 1.938T12 22t-3.488-.712m8.438-3.338Q19 15.9 19 13t-2.05-4.95T12 6T7.05 8.05T5 13t2.05 4.95T12 20t4.95-2.05M12 13"/>',
   width: 24,
@@ -113,16 +86,6 @@ const held = ref<Held | null>(heldAttempt(code))
 const state = ref<Attempt | null>(null)
 
 const info = computed(() => quiz.value?.quiz)
-// The quiz's own color as the page's accent, set on the frame as the student
-// tokens so every button, ring, bar and word in the accent below follows.
-// A fill (the intro's disc, a filled button, the progress bar) wears the
-// color as it was picked, the one the quiz's card and the sidebar wear, with
-// the ink that reads on it. Where the accent is itself the text or an icon,
-// it takes a second tone that reads on everything it is drawn on: the
-// surface, the page behind it and the color's own strongest tint (16%, the
-// quiz maker's initial). The palette's orange as a fill is #ef6c00 under the
-// dark ink, 5.65:1; as text it is #ae4e00, 5.4:1 on white and 4.5:1 on its
-// tint.
 const tint = computed(() => {
   const c = info.value?.color
   if (!c) return undefined
@@ -132,11 +95,6 @@ const tint = computed(() => {
     isDark.value ? DARK_BG : LIGHT_BG,
     mix(surface, c, 0.16),
   ]
-  // In the dark theme a dark pick (the palette's purple is 1.73:1 on the
-  // dark surface, its brown 1.63:1) would leave a button that barely
-  // stands off the page: there the fill is the color moved toward white
-  // until it is 3:1 against the surface. A color that already stands off
-  // is kept as picked, as every color is in the light theme.
   const fill = isDark.value ? readableOn(c, surface, 3) : c
   return {
     "--student": fill,
@@ -218,8 +176,6 @@ onMounted(async () => {
       state.value = await takeApi.state(held.value)
       setDeadline(state.value.timeLeft)
     } catch (e) {
-      // A 404 is an attempt the server no longer knows; anything else (offline)
-      // keeps it, so the next load can still resume.
       if (e instanceof ApiError && e.status === 404) {
         dropAttempt(code)
         held.value = null
@@ -317,8 +273,6 @@ const starting = ref(false)
 function begin() {
   if (resumable.value) {
     const list = questions.value
-    // Per question, the clock's own record says which question was on
-    // screen: those before it were passed and stay passed.
     const pace = timeMode.value === "question" ? readPace(code) : null
     const mine = pace && pace.attempt === held.value?.attempt ? pace : null
     const from = mine
@@ -378,8 +332,6 @@ async function start() {
 
 /** A fresh attempt; the old one stays with the quiz maker as it was. */
 function startOver() {
-  // The name and section fields start empty: on a shared classroom phone
-  // the next attempt is often another student's.
   nameInput.value = ""
   sectionInput.value = ""
   dropAttempt(code)
@@ -420,8 +372,6 @@ function enter(i: number, startedAt?: number) {
     qStart.value = null
     return
   }
-  // The tick runs every 250 ms; a clock started between ticks would read
-  // more than its limit until the next one.
   now.value = Date.now()
   qStart.value = startedAt ?? now.value
   if (held.value)
@@ -490,10 +440,6 @@ const hasPick = computed(() =>
   draft.value ? filled(draft.value) : !!savedPick.value,
 )
 
-/**
- * Sends the pick on screen when it differs from what is saved. True when
- * there was nothing to send or it was saved; false when the send failed.
- */
 async function commit() {
   const q = current.value
   if (!q || !held.value || !state.value) return false
@@ -532,11 +478,6 @@ async function primary() {
   if (!(await commit())) return
   await advance()
 }
-/**
- * Skip leaves the question for now. On a quiz checked at the end, a pick it
- * leaves behind is dropped, so what shows chosen later is what is saved; on
- * a quiz checked as it goes the pick waits, unchecked, for the way back.
- */
 function skip() {
   const q = current.value
   if (!q || busy.value || finishing.value) return
@@ -662,8 +603,6 @@ watch(
 )
 onBeforeUnmount(() => clearInterval(tick))
 
-// The calm warning: the last fifth of an overall limit, the last five
-// seconds of a question's.
 const warn = computed(
   () =>
     left.value != null &&
@@ -679,10 +618,6 @@ const lastMinute = computed(
     left.value > 0 &&
     left.value <= 60_000,
 )
-// Screen readers hear the minutes as they change, not every second: the
-// note is rewritten only when the clock crosses a whole minute, so it reads
-// the exact time when a clock first shows ("1 minute 10 seconds left.") and
-// whole minutes after that ("1 minute left.").
 const minuteMark = computed(() =>
   (stage.value === "question" || stage.value === "summary") &&
   left.value != null &&
@@ -696,11 +631,6 @@ watch(minuteMark, (m) => {
   minuteNote.value = said ? `${said} left.` : ""
 })
 
-// At zero: overall, the attempt finishes; per question, the next one comes
-// up (the last one finishes). A pick on screen at zero is sent first: on a
-// quiz checked as it goes its feedback then shows and Next moves on; on one
-// checked at the end it is saved and the next question comes up. An answer
-// still out is waited for.
 let lapsing = false
 watch([left, busy, finishing], async () => {
   if (left.value !== 0 || busy.value || finishing.value || lapsing) return
@@ -746,13 +676,6 @@ const graded = computed(() =>
 )
 const score = computed(() => state.value?.score ?? 0)
 
-/**
- * The score on screen counts from 0 to the result over 600 ms when the
- * finished page first appears (not on the way back from the review), so the
- * number reads as arrived at. The count keeps the result's own precision,
- * whole or one decimal, so the figure's width holds while it runs. Under
- * reduced motion it is the result at once.
- */
 const shownScore = ref(0)
 /** The finished page was just arrived at: the one time its pieces move. */
 const arrived = ref(false)
@@ -792,8 +715,6 @@ const headline = computed(() =>
       ? "Good work"
       : "Quiz finished",
 )
-// The design's green number and party popper are for a passing score; a low
-// one is stated plainly, in the text color, with a note instead.
 const passed = computed(() => pct.value >= 0.5)
 const right = computed(() => graded.value.filter((f) => f.correct).length)
 const skipped = computed(() => graded.value.filter((f) => f.skipped).length)
@@ -1133,8 +1054,6 @@ function openReview() {
               answered.
             </p>
           </section>
-          <!-- One card leaves and the next arrives: a new question, not an
-               edit of the old one. -->
           <Transition name="q" mode="out-in">
             <TakeItem
               :key="current.id"
@@ -1157,8 +1076,6 @@ function openReview() {
           <p v-if="answerError" class="error" role="alert">{{ answerError }}</p>
         </template>
 
-        <!-- Before Finish, on a quiz checked at the end: every question,
-             answered or not, each row the way back to it. -->
         <template v-else-if="stage === 'summary' && state">
           <section class="card sum-head">
             <h1>Your answers</h1>
@@ -1434,8 +1351,6 @@ function openReview() {
         >
           Skip
         </button>
-        <!-- Filled once it has something to do: a pick to confirm (Check, or
-             Next on a quiz checked at the end), then the way on. -->
         <button
           type="button"
           :btn="primaryReady ? 'primary' : ''"
@@ -1595,9 +1510,6 @@ function openReview() {
 </template>
 
 <style scoped>
-/* The respondent's pages wear the student purple: every primary button,
-     focus ring and accent below reads --accent, so one swap here recolors
-     them. The teacher's brown stays reachable for the "Make a quiz" card. */
 .take {
   --teacher: var(--accent);
   --teacher-ink: var(--accent-ink);
@@ -1605,9 +1517,6 @@ function openReview() {
 .frame {
   --accent: var(--student);
   --accent-ink: var(--student-ink);
-  /* The accent where it is the text, an icon or a line rather than a fill.
-     The student purple reads as both; a quiz's own color sets a tone of its
-     own here (see `tint`). */
   --accent-text: var(--student);
   display: flex;
   flex-direction: column;
@@ -1615,8 +1524,6 @@ function openReview() {
   min-height: 100dvh;
   margin: 0 auto;
 
-  /* A phone keeps the button at the thumb; a computer keeps it under the
-     cards rather than at the window's foot, 230px below them. */
   @media (min-width: 768px) {
     min-height: 0;
   }
@@ -1649,8 +1556,6 @@ function openReview() {
   border: 0;
   border-radius: 50%;
   background: none;
-  /* The muted ink, like the bar's other glyphs: red would be the one
-     saturated color on the screen. Red once a report has gone. */
   color: var(--muted);
   cursor: pointer;
 
@@ -1668,10 +1573,6 @@ function openReview() {
     }
   }
 }
-/* The report shares the name prompt's box but not its centering: the
-   reasons and the field start at the content edge and the field runs the
-   full width. Both classes are named so these rules outweigh the
-   `.name-dialog` ones below, which come later at equal specificity. */
 .name-dialog.report-dialog {
   text-align: left;
 
@@ -1792,8 +1693,6 @@ function openReview() {
   /* One bar filling, not two states: the width runs, 300 ms. */
   transition: width 300ms var(--ease);
 }
-/* The clock: a small pill that turns to the warn color near the end and
-   dims once an answer has stopped it. Never red, never pulsing. */
 .clock {
   display: inline-flex;
   align-items: center;
@@ -1831,8 +1730,6 @@ function openReview() {
   text-align: center;
   color: var(--muted);
 }
-/* The question card: the old one fades out in 120 ms, the next fades in and
-   rises 12px over 200 ms. */
 .q-enter-active {
   transition:
     opacity 200ms var(--ease-emphasized-decelerate),
@@ -1886,8 +1783,6 @@ function openReview() {
   background: var(--accent);
   color: var(--accent-ink);
 }
-/* The quiz's own icon (any Iconify set, emoji sets in their own colors) on
-   a soft tint rather than the solid accent, so a colored glyph reads. */
 .mark.own {
   background: color-mix(in srgb, var(--accent) 12%, var(--surface));
   color: var(--accent-text);
@@ -1924,8 +1819,6 @@ function openReview() {
   padding: 0;
   list-style: none;
 }
-/* The rules share the notices' inset: an 18px glyph and a 10px gap, so the
-   text of stacked cards starts on one edge. */
 .facts li {
   display: flex;
   gap: 10px;
@@ -2081,8 +1974,6 @@ function openReview() {
     flex-direction: row;
     gap: 8px;
   }
-  /* Back and Skip keep their own width; the filled button takes the rest,
-     so it stays the widest thing in reach of the thumb. */
   .outline,
   .pass {
     flex: none;
@@ -2114,9 +2005,6 @@ function openReview() {
   background: transparent;
   color: var(--accent-text);
 
-  /* Disabled (the first question's Back): outline and text at 38% of the
-     ink, Material's disabled level, in place of the global 60% opacity
-     that left the purple outline reading heavier than the quiet Skip. */
   &:disabled {
     border-color: color-mix(in srgb, var(--ink) 38%, transparent);
     color: color-mix(in srgb, var(--ink) 38%, transparent);
@@ -2127,8 +2015,6 @@ function openReview() {
 .pass[btn="quiet"] {
   color: var(--accent-text);
 }
-/* The filled button before it has anything to do: an outline at Material's
-   disabled level, in place of the global 60% opacity over a white fill. */
 .go:not([btn="primary"]):disabled {
   border-color: color-mix(in srgb, var(--ink) 12%, transparent);
   background: color-mix(in srgb, var(--ink) 8%, transparent);
@@ -2338,8 +2224,6 @@ function openReview() {
   min-height: 44px;
   padding: 0 10px;
 }
-/* The note stands off the first question by the list's own gap (28px), so
-   it reads as a thing above the questions rather than one of them. */
 .above-review {
   margin-bottom: 16px;
 }
@@ -2351,8 +2235,6 @@ function openReview() {
   padding: 0;
   list-style: none;
 
-  /* A list read top down: each row rises after the one above, the stagger
-     capped at ten rows so a long quiz is not a long wait. */
   > li {
     animation: rise-in 200ms var(--ease-emphasized-decelerate) both;
     animation-delay: calc(min(var(--i, 0), 10) * 40ms);

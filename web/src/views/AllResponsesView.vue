@@ -11,11 +11,6 @@ import {
 } from "../composables/respondents"
 import { edited } from "../composables/quizzes"
 
-/**
- * The sidebar's Responses: everyone who answered any of the user's quizzes,
- * people still answering first, then the finished ones, newest first. Each
- * row opens that person's answers.
- */
 type Row = {
   id: number
   quizId: number

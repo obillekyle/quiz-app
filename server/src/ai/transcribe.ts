@@ -1,12 +1,5 @@
 import { generate, S, type Part } from './gemini.ts'
 
-/*
- * The AI's reading of what has no text layer: a photo of a page, or the pages
- * of a scanned PDF. It runs once, when the file is uploaded, and the text it
- * returns is what the draft, the chat edits and the grounding check use from
- * then on. A question's quote has to be found in that text word for word, so
- * the transcription is exact and never a summary.
- */
 const RULES = `You transcribe study material for a quiz maker. Questions will quote your text word for word, so it must be exactly what is printed.
 - Copy every word as printed, in reading order: headings, paragraphs, list items, captions, labels. Keep the original language (often English or Filipino), spelling and punctuation. Do not correct, translate, summarize, shorten or add anything.
 - A table: one line per row, its cells in order, separated by single spaces.

@@ -19,14 +19,6 @@ function ready(): Promise<void> {
   return loading
 }
 
-/**
- * Who is signed in, and the calls that change it.
- *
- * The session itself is an httpOnly cookie the server sets and the browser
- * sends with every request; page scripts cannot read it, which is what keeps
- * an injected script from stealing it. So this asks the server (`/me`) rather
- * than reading a cookie, and `ready()` is that question, asked once.
- */
 export function useAuth() {
   return {
     userdata: readonly(user),
@@ -40,10 +32,6 @@ export function useAuth() {
       user.value = r.user
     },
 
-    /**
-     * Emails a six-digit sign-in code. `via` is 'log' on a development
-     * server with no mail set up, where the code lands in the server's log.
-     */
     sendCode(email: string) {
       return api<{ sent: true; via: "mail" | "log"; wait: number }>(
         "/auth/code",

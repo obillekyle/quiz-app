@@ -1,12 +1,5 @@
 <script setup lang="ts">
 import { activeToast } from "../composables/toast"
-
-/**
- * The toast on screen, as Material's snackbar: 14px text on the inverse
- * surface (the ink, so it is dark on the light theme and light on the
- * dark one), a pill at the bottom center. The host is the live region and
- * is always present, so a screen reader hears each text as it lands.
- */
 </script>
 
 <template>

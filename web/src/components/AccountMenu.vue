@@ -5,11 +5,6 @@ import Icon from "./Icon.vue"
 import { useAuth } from "../composables/auth"
 import { useAction } from "../composables/fetch"
 
-/**
- * The account at the foot of the sidebar, as Claude's app has it (Kyle,
- * 23:55): the initial and the name, opening a menu with the email,
- * Settings and Sign out. A folded sidebar shows the initial alone.
- */
 defineProps<{ folded?: boolean }>()
 const router = useRouter()
 const { userdata, logout } = useAuth()
@@ -19,8 +14,6 @@ const initial = computed(() =>
 const menu = ref<HTMLElement>()
 const settings = ref<HTMLButtonElement>()
 
-// The button holds its fill while the menu is up, and the keyboard lands on
-// the menu's first item.
 const open = ref(false)
 function toggled(e: Event) {
   open.value = (e as ToggleEvent).newState === "open"
@@ -38,8 +31,6 @@ function go(to: string) {
 </script>
 
 <template>
-  <!-- The browser's own popover: the button opens it, and Escape or a click
-       outside closes it, with no script for either. -->
   <button
     class="me"
     :data-folded="folded || undefined"
@@ -88,9 +79,6 @@ function go(to: string) {
 </template>
 
 <style scoped>
-/* The avatar's center and the name's start sit on the nav rows' icon center
-   (x 32) and label start (x 54): 12 of the foot, 4 of padding, 32 of avatar
-   and a 6 gap. */
 .me {
   display: flex;
   align-items: center;
@@ -154,9 +142,6 @@ function go(to: string) {
   }
 }
 
-/* Above the account, at the sidebar's foot, on the same 12px edges as the
-   sidebar's rows. A folded rail is too narrow to hold it, so there it keeps
-   its width and starts at the rail's own inset. */
 .menu {
   position: fixed;
   inset: auto;

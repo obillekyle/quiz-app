@@ -7,12 +7,6 @@ import { isReading, startReading } from '../quiz/read.ts'
 import { ownUpload, saveUpload, toSource, type Source } from '../quiz/sources.ts'
 import { within } from '../limits.ts'
 
-/**
- * Files from the prompt box, uploaded the moment they are picked and read at
- * once, so the material is ready (or nearly) by the time the prompt is sent.
- * Sending the prompt attaches them to the quiz by id (`POST /quizzes`,
- * `POST /quizzes/:id/chat`).
- */
 export const uploads = new Hono<{ Variables: { user: User } }>()
 
 uploads.use('*', requireUser)

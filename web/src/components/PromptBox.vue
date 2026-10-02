@@ -3,17 +3,6 @@ import { computed, onBeforeUnmount, ref } from "vue"
 import Icon from "./Icon.vue"
 import { api } from "../composables/api"
 
-/**
- * The prompt box from Kyle's sketches, shared by the home page and the
- * builder's chat: type what you want, attach PDFs or photos (+ or drop),
- * send. Enter sends; Shift+Enter starts a new line, as in a chat box.
- *
- * A file uploads the moment it is picked and the server starts reading it
- * (its text layer, or the AI for a photo or a scan), so the material is
- * ready, or nearly, by the time the prompt is sent. Each file shows how far
- * it has got. Sending passes the files' ids; a read still running is waited
- * for by the server, not here.
- */
 const props = withDefaults(
   defineProps<{
     placeholder?: string
@@ -237,8 +226,6 @@ defineExpose({ clear, focus, fill })
     @dragleave.self="dragging = false"
     @drop.prevent="onDrop"
   >
-    <!-- Behind the box, four colored shadows; on its edge, the ring that
-         turns while work is going on. -->
     <i class="glow" aria-hidden="true"><i /><i /><i /><i /></i>
     <i class="ring" aria-hidden="true" />
     <textarea
@@ -321,18 +308,6 @@ defineExpose({ clear, focus, fill })
   initial-value: 0deg;
 }
 
-/*
- * Three looks. At rest a 1px line. With the cursor in it a 1.5px outline in
- * the ink's own gray, and on the home page's big box four colored shadows
- * behind it. While work is going on (the AI, or a file going up) a ring in
- * the brand's colors turns on the edge and the shadows breathe and drift,
- * on both boxes.
- *
- * The box is a stack of its own, bottom to top: the shadows, the face (the
- * surface and its line), the outline and the ring, the controls. The face is
- * a layer and not the form's own background so the shadows can sit under it
- * without sliding under the page as well.
- */
 .box {
   --glow-orange: #ff7a1a;
   --glow-magenta: #c04be0;
@@ -372,10 +347,6 @@ defineExpose({ clear, focus, fill })
     box-shadow: var(--shadow-sm);
   }
 
-  /* The outline of a box with the cursor in it: neutral, 150 ms in. It
-     gives way to the ring while work is going on. An inset shadow and not a
-     border: a border of 1.5px is drawn as 1px on a screen of one device
-     pixel to the CSS pixel, the same as the resting line. */
   &::after {
     content: "";
     z-index: 0;
@@ -392,17 +363,9 @@ defineExpose({ clear, focus, fill })
     transition-duration: 300ms;
   }
 
-  /* The ring: the brand's colors around the edge, masked to a band as wide
-     as --rw. It turns once every 3 s while work is going on, and is paused
-     rather than removed when the work ends, so its 300 ms fade starts from
-     wherever it was. The gradient is written here and not handed down in a
-     variable: a variable holding var(--angle) is resolved on the element
-     that declares it, and the ring would inherit a gradient stuck at 0deg. */
   .ring {
     z-index: 0;
     padding: var(--rw);
-    /* Brighter relatives of the brand colors: the brown and the purple read
-       near black in a 1.5px line and gray in a blurred shadow. */
     background: conic-gradient(
       from var(--angle),
       var(--glow-orange),
@@ -424,18 +387,6 @@ defineExpose({ clear, focus, fill })
     animation-play-state: running;
   }
 
-  /* The shadows: one layer a color, each a soft drop shadow thrown its own
-     way (purple down and left, orange up and right, brown below, blue up and
-     left). A layer is 21px smaller than the box all round with the spread
-     21px larger, so the shadow is the box's own while the layer, which moves,
-     never reaches past the box and never adds to what the page scrolls.
-
-     While work is going on each layer goes round the box on a circle as wide
-     as its throw, once every 12 s, without turning itself (turning a layer
-     as wide as the box would swing it across the page), and breathes between
-     70% and full every 2 s. Only transform and opacity change; the shadows
-     are drawn once. Paused, not removed, when the work ends. Under reduced
-     motion both are over at once and the shadows stay where they rest. */
   .glow {
     z-index: -2;
     opacity: 0;
@@ -693,8 +644,6 @@ textarea {
   textarea {
     font-size: 17px;
   }
-  /* A finger's size for the attach and the send, the compact box included;
-     the file chip's cross keeps its 24px and gets 44 to tap. */
   .box[data-compact] .attach,
   .box[data-compact] .send {
     width: 44px;

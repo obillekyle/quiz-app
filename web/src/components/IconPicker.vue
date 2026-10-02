@@ -3,12 +3,6 @@ import { Icon as Iconify } from "@iconify/vue"
 import { computed, onBeforeUnmount, ref, watch } from "vue"
 import Icon from "./Icon.vue"
 
-/**
- * Picks a quiz's icon from Iconify: a search over its sets, colorful emoji
- * first, and a field for any id typed or pasted. Emits `pick` with the id;
- * the parent saves it. Icons are drawn by @iconify/vue, which fetches each
- * from Iconify's API, so the picker needs a connection.
- */
 const props = defineProps<{ current: string | null }>()
 const emit = defineEmits<{ pick: [id: string] }>()
 
@@ -51,11 +45,6 @@ const state = ref<"idle" | "searching" | "empty" | "failed">("idle")
 let timer: number | undefined
 let controller: AbortController | undefined
 
-/**
- * One request to the colorful sets and one to all of them, side by side. An
- * emoji comes back once per set, so each is kept once, in the first set of
- * COLORFUL that draws it; the rest of the grid fills from the other sets.
- */
 async function search(q: string) {
   controller?.abort()
   controller = new AbortController()

@@ -1,12 +1,5 @@
 import { ref, watch } from "vue"
 
-/*
- * Light (the default, the look every screen was reviewed in), dark, or the
- * system's, from the settings page. Kept in this
- * browser; applied as `data-theme` on <html>, which the tokens read
- * (styles/tokens.css). Applied before the app mounts, so a dark page does not
- * flash light first.
- */
 export type Theme = "system" | "light" | "dark"
 const KEY = "qa_theme"
 const dark = window.matchMedia("(prefers-color-scheme: dark)")

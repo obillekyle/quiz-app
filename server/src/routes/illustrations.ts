@@ -6,14 +6,6 @@ import { attach, find, fromUpload, readIllustration, type Asked } from '../quiz/
 import { loadSources } from '../quiz/sources.ts'
 import { ownQuiz } from '../quiz/store.ts'
 
-/**
- * Pictures for questions. The builder asks for candidates, attaches one (or
- * uploads its own), and saves the returned `image`, `imageAlt` and
- * `imageCredit` with the question as it saves any other field. The files are
- * served to anyone, since a shared quiz shows them to people with no
- * account; each name is 96 random bits, so a draft's pictures cannot be
- * guessed.
- */
 export const illustrations = new Hono<{ Variables: { user: User } }>()
 
 illustrations.get('/file/:name', async (c) => {

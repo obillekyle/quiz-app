@@ -1,9 +1,4 @@
 export {}
-/**
- * Which model should check a typed answer? One near-miss grading call per
- * model, with a system instruction and a JSON schema, timed.
- *   bun scripts/probe-grade.ts
- */
 const key = process.env.GEMINI_API_KEY!
 const system =
   'You check a typed quiz answer against the accepted answers. Count it correct if it means the same thing: ignore capitalization, spacing and small spelling slips, and accept numbers written as words. Do not accept a different thing.'

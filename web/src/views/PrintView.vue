@@ -11,13 +11,6 @@ import {
   type Question,
 } from "../composables/quizzes"
 
-/*
- * A quiz as a paper test, in black and white: a school header, the questions
- * in sections by kind (as Philippine test papers set them out), Set A and a
- * shuffled Set B, an answer key for each set, and a table of specifications.
- * The page previews in black and white, and the browser's own print dialog
- * makes the paper or the PDF.
- */
 const route = useRoute()
 const id = computed(() => Number(route.params.id))
 const { data, error, loading } = useFetch<FullQuiz>(
@@ -149,11 +142,6 @@ const ORDER: Kind[] = ["choice", "truefalse", "identify", "essay"]
 const LETTERS = "ABCDEFGH"
 const ROMAN = ["I", "II", "III", "IV"]
 
-/*
- * Sets inside the identification part: the word bank prints as a box of its
- * words above the items, the crossword as its empty grid, and each crossword
- * item names its place ("4 Across") where the others have a blank.
- */
 const bank = computed(() => data.value?.sets?.find((x) => x.style === "bank"))
 const cross = computed(() =>
   data.value?.sets?.find((x) => x.style === "crossword"),
@@ -198,11 +186,6 @@ function random(seed: number) {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296
   }
 }
-/**
- * Sattolo's shuffle: a random single cycle, so no item stays where it was
- * (with two or more). Set B moves every question within its section with
- * it, and shuffles the options of every multiple-choice question.
- */
 function shuffle<T>(list: T[], next: () => number) {
   const out = [...list]
   for (let i = out.length - 1; i > 0; i--) {
@@ -212,13 +195,6 @@ function shuffle<T>(list: T[], next: () => number) {
   return out
 }
 
-/**
- * The sections, in the quiz's order (no seed) or shuffled from a seed. With
- * `avoid` (Set A's answers by number), a multiple-choice item whose shuffled
- * answer lands on Set A's letter at its number has its options turned by
- * one place, which moves the answer to another letter. The turn draws no
- * random number, so the rest of the shuffle is the same for a seed.
- */
 function arrange(seed: number | null, avoid?: Map<number, string>): Section[] {
   const next = seed == null ? null : random(seed)
   let n = 0
@@ -251,21 +227,6 @@ function answersByNumber(sections: Section[]) {
   return out
 }
 
-/*
- * Set B is the shuffle, out of 24 seeded from the quiz, whose answers repeat
- * Set A's at the same number least often. Sattolo's shuffle moves every
- * question and option, but with four letters a quarter of the answers would
- * still match by chance. The chosen seed is then arranged with `avoid`, which
- * turns each multiple-choice item that still repeats, so no letter does. True
- * or false has two answers and cannot avoid every repeat; the seeds keep
- * those to the fewest.
- *
- * The seeds are ranked before the turn, not after. Ranked after, every seed
- * scores zero on multiple choice and the first one wins: on quiz 16 that
- * turned three of six answers, each one letter back, for a key of
- * A B A A C A. Ranked before, seed 18 needs no turn (C A D D A C). The
- * seeds are fixed, so a reprint matches its key.
- */
 const setA = computed(() => arrange(null))
 const setB = computed(() => {
   const a = answersByNumber(setA.value)
@@ -342,8 +303,6 @@ const tos = computed(() => {
       count: mine.length,
     }
   })
-  // Percents by points (an essay of 5 weighs 5), rounded so they add to 100:
-  // each row takes its floor, and the largest remainders take what is left.
   const allPoints = items.reduce((sum, i) => sum + i.q.points, 0)
   const withPoints = rows.map((r) => {
     const pts = items
@@ -836,8 +795,6 @@ const print = () => window.print()
 .dir {
   break-after: avoid;
 }
-/* A picture prints in grayscale, no taller than a third of the page, with
-   its credit under it (a Commons license asks for the author's name). */
 .pic {
   margin: 4px 0 6px calc(var(--blank) + 6px);
   break-inside: avoid;
